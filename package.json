@@ -1,20 +1,26 @@
 {
-  "name": "receptionist-ai-backend",
-  "version": "1.0.0",
-  "description": "AI receptionist backend for arborists",
+  "name": "receptionist-ai",
+  "version": "2.0.0",
+  "description": "AI-powered SMS receptionist for arborists — Grafted Services",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "twilio": "^4.19.0",
-    "@anthropic-ai/sdk": "^0.20.1",
+    "@anthropic-ai/sdk": "^0.24.0",
+    "axios": "^1.7.2",
+    "better-sqlite3": "^9.6.0",
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "googleapis": "^140.0.0",
-    "dotenv": "^16.3.1"
+    "twilio": "^5.2.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
