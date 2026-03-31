@@ -1,21 +1,33 @@
 require('dotenv').config();
+
 const express = require('express');
 const twilio = require('twilio');
-const { getConversation, addMessage, clearConversation } = require('./conversations');
-const { getAIReply, parseBooking, cleanReply } = require('./ai');
+const path = require('path');
+const cookieSession = require('cookie-session');
+
+const { getConversation, addMessage, clearConversation, getSetting } = require('./db');
+const { getAIReply, parseBooking, cleanReply, assessImage } = require('./ai');
 const { bookEvent } = require('./calendar');
+const { calculateCalloutFee, extractPostcode } = require('./postcode');
 
 const app = express();
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+app.use(cookieSession({
+  name: 'grafted_session',
+  secret: process.env.SESSION_SECRET || 'change-me-in-production',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  httpOnly: true,
+  sameSite: 'lax',
+}));
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ─────────────────────────────────────────────
 // 1. MISSED CALL WEBHOOK
 // Twilio calls this when a call goes unanswered.
-// Set this URL in your Twilio number's "Call comes in" webhook
-// with the fallback set to fire after your ring timeout.
 // ─────────────────────────────────────────────
 app.post('/call-missed', async (req, res) => {
   const callerNumber = req.body.From;
@@ -23,7 +35,6 @@ app.post('/call-missed', async (req, res) => {
 
   console.log(`📞 Missed call from ${callerNumber}`);
 
-  // Send the instant text back to the missed caller
   const openingText = `Hi, it's ${process.env.BUSINESS_NAME} here. Sorry I missed your call, I'm out on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
 
   try {
@@ -32,73 +43,127 @@ app.post('/call-missed', async (req, res) => {
       from: process.env.TWILIO_PHONE_NUMBER,
       to: callerNumber,
     });
-
-    // Save the opening message to conversation history
     addMessage(callerNumber, 'assistant', openingText);
     console.log(`✅ Sent opening SMS to ${callerNumber}`);
   } catch (err) {
     console.error(`❌ Failed to send SMS to ${callerNumber}:`, err.message);
   }
 
-  // Play a brief message if they're still on the line, then hang up
   twiml.say({ voice: 'alice', language: 'en-GB' },
     `Thanks for calling ${process.env.BUSINESS_NAME}. We're out on a job right now but we've just sent you a text. We'll be in touch very soon.`
   );
   twiml.hangup();
-
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-
 // ─────────────────────────────────────────────
 // 2. INCOMING SMS WEBHOOK
-// Twilio calls this when the customer replies to the text.
-// Set this URL in your Twilio number's "A message comes in" webhook.
 // ─────────────────────────────────────────────
 app.post('/sms-incoming', async (req, res) => {
   const callerNumber = req.body.From;
-  const incomingMessage = req.body.Body?.trim();
+  const incomingMessage = req.body.Body?.trim() || '';
+  const numMedia = parseInt(req.body.NumMedia || '0', 10);
+  const mediaUrl = req.body.MediaUrl0;
+  const mediaType = req.body.MediaContentType0 || 'image/jpeg';
+
   const twiml = new twilio.twiml.MessagingResponse();
 
-  console.log(`💬 SMS from ${callerNumber}: ${incomingMessage}`);
+  console.log(`💬 SMS from ${callerNumber}: ${incomingMessage || '(media only)'}`);
 
-  // Handle opt-out
-  if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(incomingMessage.toLowerCase())) {
-    clearConversation(callerNumber);
-    twiml.message('No problem, you won\'t hear from us again. Take care!');
+  // Bot enabled check
+  if (getSetting('bot_enabled') === 'false') {
+    addMessage(callerNumber, 'user', incomingMessage, mediaUrl);
     res.type('text/xml');
     return res.send(twiml.toString());
   }
 
-  // Add customer message to history
-  addMessage(callerNumber, 'user', incomingMessage);
-  const history = getConversation(callerNumber);
+  // Opt-out
+  if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(incomingMessage.toLowerCase())) {
+    clearConversation(callerNumber);
+    twiml.message("No problem, you won't hear from us again. Take care!");
+    res.type('text/xml');
+    return res.send(twiml.toString());
+  }
+
+  addMessage(callerNumber, 'user', incomingMessage, mediaUrl);
 
   try {
-    // Get Claude's reply
-    const rawReply = await getAIReply(callerNumber, history);
-    const bookingData = parseBooking(rawReply);
-    const reply = cleanReply(rawReply);
+    let reply;
 
-    // Save AI reply to history
-    addMessage(callerNumber, 'assistant', reply);
-
-    // If booking detected, add to Google Calendar
-    if (bookingData) {
+    // ── MMS photo handling ───────────────────────────────────────────────────
+    if (numMedia > 0 && mediaUrl) {
+      console.log(`🖼️  MMS received: ${mediaUrl}`);
       try {
-        await bookEvent({ ...bookingData, callerNumber });
-        console.log(`📅 Booking created for ${callerNumber}: ${bookingData.job} on ${bookingData.date} at ${bookingData.time}`);
-      } catch (calErr) {
-        console.error('❌ Calendar booking failed:', calErr.message);
-        // Don't fail the SMS reply if calendar fails
+        reply = await assessImage(mediaUrl, mediaType, incomingMessage);
+      } catch (imgErr) {
+        console.error('Image assessment failed:', imgErr.message);
+        reply = "Thanks for the photo! I've passed it to the team who'll be in touch with a quote shortly.";
+      }
+
+    } else {
+      // ── Postcode detection ─────────────────────────────────────────────────
+      const postcode = extractPostcode(incomingMessage);
+      let postcodeNote = '';
+
+      if (postcode) {
+        try {
+          const callout = await calculateCalloutFee(postcode);
+          if (!callout.withinRange) {
+            // Outside range — decline politely
+            addMessage(callerNumber, 'assistant', callout.message);
+            twiml.message(callout.message);
+            res.type('text/xml');
+            return res.send(twiml.toString());
+          }
+          postcodeNote = callout.fee > 0
+            ? `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, callout fee £${callout.fee.toFixed(2)}]`
+            : `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, within free zone]`;
+        } catch (pcErr) {
+          console.warn('Postcode lookup failed:', pcErr.message);
+        }
+      }
+
+      // ── Get AI reply ───────────────────────────────────────────────────────
+      const history = getConversation(callerNumber);
+      const messageForAI = postcodeNote
+        ? `${incomingMessage}${postcodeNote}`
+        : incomingMessage;
+
+      // Append postcode context to last user message if needed
+      if (postcodeNote) {
+        history[history.length - 1].content = messageForAI;
+      }
+
+      const rawReply = await getAIReply(callerNumber, history);
+      const bookingData = parseBooking(rawReply);
+      reply = cleanReply(rawReply);
+
+      // ── Calendar booking ───────────────────────────────────────────────────
+      if (bookingData) {
+        try {
+          const event = await bookEvent({ ...bookingData, callerNumber });
+          console.log(`📅 Booking created for ${callerNumber}: ${bookingData.job} on ${bookingData.date}`);
+          // Optionally save appointment record
+          const { saveAppointment } = require('./db');
+          saveAppointment({
+            phone: callerNumber,
+            summary: `${bookingData.job} - ${bookingData.postcode}`,
+            startTime: `${bookingData.date} ${bookingData.time}`,
+            googleEventId: event?.id,
+          });
+        } catch (calErr) {
+          console.error('❌ Calendar booking failed:', calErr.message);
+        }
       }
     }
 
+    addMessage(callerNumber, 'assistant', reply);
     twiml.message(reply);
     console.log(`✅ Replied to ${callerNumber}: ${reply}`);
+
   } catch (err) {
-    console.error('❌ AI reply failed:', err.message);
+    console.error('❌ SMS handler error:', err.message);
     twiml.message(`Sorry, just give ${process.env.BUSINESS_OWNER_NAME} a ring back when you get a chance!`);
   }
 
@@ -106,10 +171,8 @@ app.post('/sms-incoming', async (req, res) => {
   res.send(twiml.toString());
 });
 
-
 // ─────────────────────────────────────────────
-// 3. GOOGLE CALENDAR AUTH (run once to get refresh token)
-// Visit /auth/google in your browser to start the OAuth flow
+// 3. GOOGLE CALENDAR AUTH (one-time setup)
 // ─────────────────────────────────────────────
 const { google } = require('googleapis');
 
@@ -134,18 +197,32 @@ app.get('/auth/callback', async (req, res) => {
     process.env.GOOGLE_REDIRECT_URI
   );
   const { tokens } = await auth.getToken(req.query.code);
-  console.log('✅ YOUR REFRESH TOKEN (copy this into .env):');
-  console.log(tokens.refresh_token);
-  res.send(`
-    <h2>Authorised!</h2>
-    <p>Copy this refresh token into your .env file as GOOGLE_REFRESH_TOKEN:</p>
-    <code style="font-size:14px; word-break:break-all">${tokens.refresh_token}</code>
-  `);
+  const { setSetting } = require('./db');
+  setSetting('google_tokens', JSON.stringify(tokens));
+  console.log('✅ Google Calendar connected');
+  res.redirect('/dashboard?success=calendar_connected');
 });
 
+// ─────────────────────────────────────────────
+// 4. POSTCODE API
+// ─────────────────────────────────────────────
+app.get('/api/postcode/:postcode', async (req, res) => {
+  try {
+    const result = await calculateCalloutFee(req.params.postcode);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // ─────────────────────────────────────────────
-// 4. HEALTH CHECK
+// 5. DASHBOARD
+// ─────────────────────────────────────────────
+const dashboardRoutes = require('./dashboard');
+app.use('/dashboard', dashboardRoutes);
+
+// ─────────────────────────────────────────────
+// 6. HEALTH CHECK
 // ─────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({
@@ -154,18 +231,21 @@ app.get('/', (req, res) => {
     endpoints: {
       missed_call: 'POST /call-missed',
       incoming_sms: 'POST /sms-incoming',
-      google_auth: 'GET /auth/google',
-    }
+      dashboard: 'GET /dashboard',
+      postcode_check: 'GET /api/postcode/:postcode',
+    },
   });
 });
 
+app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`
-🌿 ${process.env.BUSINESS_NAME} AI Receptionist
-🚀 Server running on port ${PORT}
-📞 Missed call webhook: POST /call-missed
-💬 Incoming SMS webhook: POST /sms-incoming
+  🌿 ${process.env.BUSINESS_NAME || 'Grafted Services'} AI Receptionist
+  🚀 Server running on port ${PORT}
+  📞 Missed call webhook:  POST /call-missed
+  💬 Incoming SMS webhook: POST /sms-incoming
+  📊 Dashboard:            GET  /dashboard
   `);
 });
