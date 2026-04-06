@@ -169,13 +169,4 @@ app.get('/api/prospects', (req, res) => {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
 
-const PORT = process.env.JAKE_PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`
-📱 Jake Outbound Caller
-🚀 Running on port ${PORT}
-📞 Twilio webhook → POST /incoming
-📊 Admin API       → GET  /api/conversations
-💡 Start a campaign: node jake/send-campaign.js contacts.csv
-  `);
-});
+module.exports = app;
