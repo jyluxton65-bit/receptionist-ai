@@ -239,13 +239,4 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`
-  🌿 ${process.env.BUSINESS_NAME || 'Grafted Services'} AI Receptionist
-  🚀 Server running on port ${PORT}
-  📞 Missed call webhook:  POST /call-missed
-  💬 Incoming SMS webhook: POST /sms-incoming
-  📊 Dashboard:            GET  /dashboard
-  `);
-});
+module.exports = app;
