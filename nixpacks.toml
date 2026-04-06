@@ -5,4 +5,4 @@ nixPkgs = ["nodejs_20", "python3", "pkg-config"]
 cmds = ["npm install"]
 
 [start]
-cmd = "node server.js"
+cmd = "node index.js"
