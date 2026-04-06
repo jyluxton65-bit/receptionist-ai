@@ -261,14 +261,4 @@ app.get('/health', (req, res) => res.json({
   paused: isPaused(),
 }));
 
-const PORT = process.env.DEMO_PORT || 3002;
-app.listen(PORT, () => {
-  console.log(`
-🌳 Joe's Tree Services — Demo Receptionist
-🚀 Running on port ${PORT}
-📞 Missed call webhook → POST /demo/call-missed
-📱 SMS webhook          → POST /demo/sms-incoming
-📊 Dashboard (PWA)      → GET  /demo/dashboard
-💡 Text "reset demo" to any number to clear its conversation
-  `);
-});
+module.exports = app;
