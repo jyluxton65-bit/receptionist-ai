@@ -4,7 +4,7 @@ const express  = require('express');
 const twilio   = require('twilio');
 const { google } = require('googleapis');
 const { getJakeReply, parseJakeBooking, cleanJakeReply } = require('./jake-ai');
-const {h
+const {
   addMessage,
   getConversation,
   getRecentConversations,
