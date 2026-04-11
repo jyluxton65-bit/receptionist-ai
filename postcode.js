@@ -6,7 +6,7 @@
  * - £CALLOUT_RATE_PER_MILE per mile beyond that
  * - Decline if beyond MAX_RADIUS_MILES (default 25)
  *
- * Uses the free postcodes.io API to resolve UK postcodes to lat/lng.
+ * Uses the free postcodes.io API to resolve UK postcodes to lat/lhng.
  * Falls back to Haversine formula for distance — no Google Maps key needed.
  */
 
@@ -37,7 +37,7 @@ async function lookupPostcode(postcode) {
   } catch { throw new Error(`Could not find postcode "${postcode}".`); }
 }
 
-aasync function calculateCalloutFee(postcode) {
+async function calculateCalloutFee(postcode) {
   const location = await lookupPostcode(postcode);
   const distanceMiles = haversineMiles(BASE_LAT, BASE_LNG, location.lat, location.lng);
   const roundedMiles = Math.round(distanceMiles * 10) / 10;
