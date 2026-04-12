@@ -88,4 +88,4 @@ Do not prefix messages with Sarah.
 No bullet points, lists, asterisks or markdown formatting of any kind.
 No em dashes, en dashes, colons, semicolons or brackets.
 Only use full stops, commas, question marks and exclamation marks.
-Write everything as plain natural sentences.`;`
+Write everything as plain natural sentences.`;
