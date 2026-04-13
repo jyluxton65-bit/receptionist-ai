@@ -3,10 +3,10 @@ const axios = require('axios');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = require('./src/systemPrompt');
+const { buildSystemPrompt } = require('./src/systemPrompt');
 
 const getAIReply = async (callerNumber, conversationHistory) => {
-  const response = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: require('./src/systemPrompt'), messages: conversationHistory });
+  const response = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: buildSystemPrompt(), messages: conversationHistory });
   return response.content.find(b => b.type === 'text')?.text || "Sorry, just give us a call back when you get a chance!";
 };
 
@@ -18,7 +18,7 @@ const assessImage = async (imageUrl, mimeType='image/jpeg', caption='') => {
   const imgResp = await axios.get(imageUrl, {responseType:'arraybuffer',auth:{username:process.env.TWILIO_ACCOUNT_SID,password:process.env.TWILIO_AUTH_TOKEN}});
   const b64 = Buffer.from(imgResp.data).toString('base64');
   const prompt = caption ? `Customer said: "${caption}". Assess the tree/vegetation work visible and provide a rough quote range in 2-3 SMS-short sentences.` : 'Assess the tree/vegetation work in this photo and provide a rough quote range in 2-3 SMS-short sentences.';
-  const r = await client.messages.create({model:'claude-opus-4-6',max_tokens:400,system:require('./src/systemPrompt'),messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:prompt}]}]});
+  const r = await client.messages.create({model:'claude-opus-4-6',max_tokens:400,system:buildSystemPrompt(),messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:prompt}]}]});
   return r.content[0].text.trim();
 };
 
