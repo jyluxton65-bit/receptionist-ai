@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Send Photo â Joe's Tree Services</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1a10;
+    color: #d4edd6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+  }
+  .logo { margin-bottom: 28px; text-align: center; }
+  .logo h1 { color: #52b856; font-size: 22px; }
+  .logo p { color: #6b8e6f; font-size: 13px; margin-top: 4px; }
+  .card {
+    background: #131f16;
+    border: 1px solid #1e3a24;
+    border-radius: 14px;
+    padding: 24px 20px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .card h2 { font-size: 17px; color: #d4edd6; margin-bottom: 8px; }
+  .card p { font-size: 13px; color: #6b8e6f; margin-bottom: 20px; line-height: 1.5; }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed #2d4a33;
+    border-radius: 12px;
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #52b856; background: #1a2f1e; }
+  .upload-area input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .upload-icon { font-size: 40px; margin-bottom: 10px; }
+  .upload-text { font-size: 14px; color: #8bb88d; }
+  .upload-sub { font-size: 12px; color: #4a6b4d; margin-top: 4px; }
+
+  /* Preview */
+  #preview-wrap { display: none; margin-bottom: 16px; text-align: center; }
+  #preview-img {
+    max-width: 100%; max-height: 260px; border-radius: 10px;
+    border: 1px solid #2d4a33; object-fit: contain;
+  }
+  .change-link {
+    display: inline-block; margin-top: 8px; font-size: 12px;
+    color: #52b856; cursor: pointer; text-decoration: underline;
+  }
+
+  /* Caption */
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: #8bb88d; margin-bottom: 6px; }
+  .field textarea {
+    width: 100%; padding: 10px 12px;
+    background: #0d1a10; border: 1px solid #2d4a33;
+    border-radius: 8px; color: #d4edd6; font-size: 14px;
+    resize: none; height: 72px; font-family: inherit;
+  }
+  .field textarea:focus { outline: none; border-color: #52b856; }
+
+  /* Button */
+  .btn-submit {
+    width: 100%; padding: 14px;
+    background: #52b856; color: white;
+    border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-submit:hover { background: #47a34b; }
+  .btn-submit:disabled { background: #2a3f2d; color: #4a6b4d; cursor: not-allowed; }
+
+  /* Progress */
+  .progress-bar {
+    height: 4px; background: #1e3a24; border-radius: 2px;
+    margin-bottom: 16px; overflow: hidden; display: none;
+  }
+  .progress-fill {
+    height: 100%; background: #52b856; border-radius: 2px;
+    transition: width 0.3s; width: 0%;
+  }
+
+  /* States */
+  .state { display: none; text-align: center; padding: 20px 0; }
+  .state.active { display: block; }
+  .state .big-icon { font-size: 52px; margin-bottom: 12px; }
+  .state h3 { font-size: 18px; color: #d4edd6; margin-bottom: 8px; }
+  .state p { font-size: 14px; color: #6b8e6f; line-height: 1.5; }
+
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid #1e3a24;
+    border-top-color: #52b856; border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="logo">
+  <h1>ð³ Joe's Tree Services</h1>
+  <p>Photo Quote Request</p>
+</div>
+
+<div class="card" id="form-card">
+  <h2>Send us a photo</h2>
+  <p>Take or upload a photo of the tree or hedge work you need. We'll use it to give you an accurate quote estimate, which we'll text back to you right away.</p>
+
+  <div class="upload-area" id="upload-area">
+    <input type="file" id="file-input" accept="image/*" capture="environment">
+    <div class="upload-icon">ð·</div>
+    <div class="upload-text">Tap to take a photo or choose one</div>
+    <div class="upload-sub">JPG, PNG or HEIC â max 10 MB</div>
+  </div>
+
+  <div id="preview-wrap">
+    <img id="preview-img" src="" alt="Preview">
+    <span class="change-link" onclick="resetPhoto()">Choose a different photo</span>
+  </div>
+
+  <div class="field">
+    <label>Anything we should know? (optional)</label>
+    <textarea id="caption" placeholder="e.g. Large oak overhanging the garage, about 15 metres tallâ¦"></textarea>
+  </div>
+
+  <div class="progress-bar" id="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
+  <button class="btn-submit" id="submit-btn" disabled onclick="submitPhoto()">
+    <span>Send Photo</span>
+  </button>
+</div>
+
+<!-- Uploading state -->
+<div class="card state" id="state-uploading">
+  <div class="spinner"></div>
+  <h3>Analysing your photoâ¦</h3>
+  <p>Our system is reviewing the job and preparing your quote. This takes about 10 seconds.</p>
+</div>
+
+<!-- Success state -->
+<div class="card state" id="state-success">
+  <div class="big-icon">â</div>
+  <h3>Quote on its way!</h3>
+  <p>We've analysed your photo and are texting you a quote estimate now. Keep an eye on your messages.</p>
+</div>
+
+<!-- Error state -->
+<div class="card state" id="state-error">
+  <div class="big-icon">â ï¸</div>
+  <h3>Something went wrong</h3>
+  <p id="error-msg">Please try again or reply to your original message for help.</p>
+</div>
+
+<script>
+  // ââ State ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  let compressedB64 = null;
+  let compressedMime = 'image/jpeg';
+
+  // ââ File input âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  // Drag-and-drop on desktop
+  const uploadArea = document.getElementById('upload-area');
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith('image/')) return alert('Please choose an image file.');
+    if (file.size > 20 * 1024 * 1024) return alert('Image is too large. Please choose a photo under 20 MB.');
+    compressImage(file, (b64, mime) => {
+      compressedB64 = b64;
+      compressedMime = mime;
+      document.getElementById('preview-img').src = 'data:' + mime + ';base64,' + b64;
+      document.getElementById('upload-area').style.display = 'none';
+      document.getElementById('preview-wrap').style.display = 'block';
+      document.getElementById('submit-btn').disabled = false;
+    });
+  }
+
+  function resetPhoto() {
+    compressedB64 = null;
+    fileInput.value = '';
+    document.getElementById('preview-img').src = '';
+    document.getElementById('upload-area').style.display = 'block';
+    document.getElementById('preview-wrap').style.display = 'none';
+    document.getElementById('submit-btn').disabled = true;
+  }
+
+  // ââ Canvas compression âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  function compressImage(file, callback) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1400;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        const b64 = dataUrl.split(',')[1];
+        callback(b64, 'image/jpeg');
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ââ Submit âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  async function submitPhoto() {
+    if (!compressedB64) return;
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+
+    // Show uploading state
+    document.getElementById('form-card').style.display = 'none';
+    document.getElementById('state-uploading').classList.add('active');
+
+    const id = window.location.pathname.split('/').pop();
+    const caption = document.getElementById('caption').value.trim();
+
+    try {
+      const resp = await fetch('/quote/' + id + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData: compressedB64, mimeType: compressedMime, caption })
+      });
+      const data = await resp.json();
+      document.getElementById('state-uploading').classList.remove('active');
+      if (resp.ok && data.ok) {
+        document.getElementById('state-success').classList.add('active');
+      } else {
+        document.getElementById('error-msg').textContent = data.error || 'Something went wrong. Please try again.';
+        document.getElementById('state-error').classList.add('active');
+      }
+    } catch (err) {
+      document.getElementById('state-uploading').classList.remove('active');
+      document.getElementById('error-msg').textContent = 'Network error. Please check your connection and try again.';
+      document.getElementById('state-error').classList.add('active');
+    }
+  }
+</script>
+</body>
+</html>
