@@ -33,7 +33,8 @@ const {
   isPaused,
   setPaused,
 } = require('./demo-db');
-const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
+const { getDemoReply, parseBooking, cleanReply, cleanResponse, checkShouldBook } = require('./demo-ai');
+const { bookEvent } = require('../calendar');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
