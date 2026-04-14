@@ -1,284 +1,145 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Grafted Services — Dashboard</title>
-  <style>
-    /* ── Reset & base ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d1a10;
-      color: #d4edd6;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ── Sidebar + layout ── */
-    .layout { display: flex; flex: 1; min-height: 0; }
-
-    .sidebar {
-      width: 240px;
-      background: #111f14;
-      border-right: 1px solid #1e3a24;
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-    }
-
-    .sidebar-logo {
-      padding: 24px 20px;
-      border-bottom: 1px solid #1e3a24;
-    }
-    .sidebar-logo h1 { color: #52b856; font-size: 18px; }
-    .sidebar-logo span { color: #6b8e6f; font-size: 12px; display: block; margin-top: 2px; }
-
-    .sidebar nav { padding: 12px 0; flex: 1; }
-    .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 20px;
-      color: #8bb88d;
-      cursor: pointer;
-      font-size: 14px;
-      border-radius: 0;
-      transition: background 0.15s;
-      border: none; background: none; width: 100%; text-align: left;
-    }
-    .nav-item:hover, .nav-item.active {
-      background: #1a2f1e;
-      color: #d4edd6;
-    }
-    .nav-item .icon { font-size: 16px; width: 20px; }
-
-    .sidebar-footer {
-      padding: 16px 20px;
-      border-top: 1px solid #1e3a24;
-    }
-    .sidebar-footer a {
-      color: #6b8e6f; font-size: 12px; text-decoration: none;
-    }
-    .sidebar-footer a:hover { color: #d4edd6; }
-
-    /* ── Main content ── */
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .topbar {
-      padding: 16px 28px;
-      border-bottom: 1px solid #1e3a24;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #111f14;
-    }
-    .topbar h2 { font-size: 18px; color: #d4edd6; }
-
-    /* Bot toggle */
-    .toggle-wrap { display: flex; align-items: center; gap: 10px; }
-    .toggle-label { font-size: 13px; color: #8bb88d; }
-
-    .toggle {
-      position: relative;
-      width: 44px; height: 24px;
-      cursor: pointer;
-    }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle-slider {
-      position: absolute; inset: 0;
-      background: #2a3f2d;
-      border-radius: 24px;
-      transition: background 0.2s;
-    }
-    .toggle-slider::before {
-      content: '';
-      position: absolute;
-      height: 18px; width: 18px;
-      left: 3px; bottom: 3px;
-      background: white;
-      border-radius: 50%;
-      transition: transform 0.2s;
-    }
-    .toggle input:checked + .toggle-slider { background: #52b856; }
-    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
-
-    /* ── Content area ── */
-    .content { flex: 1; overflow-y: auto; padding: 28px; }
-
-    /* ── Panels ── */
-    .panel { display: none; }
-    .panel.active { display: block; }
-
-    /* ── Cards ── */
-    .card {
-      background: #131f16;
-      border: 1px solid #1e3a24;
-      border-radius: 10px;
-      padding: 20px 24px;
-      margin-bottom: 20px;
-    }
-    .card h3 { font-size: 14px; color: #8bb88d; text-transform: uppercase;
-               letter-spacing: 0.6px; margin-bottom: 16px; }
-
-    /* ── Stats row ── */
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;
-             margin-bottom: 20px; }
-    .stat {
-      background: #131f16;
-      border: 1px solid #1e3a24;
-      border-radius: 10px;
-      padding: 18px 20px;
-    }
-    .stat .value { font-size: 28px; font-weight: 700; color: #52b856; }
-    .stat .label { font-size: 12px; color: #6b8e6f; margin-top: 4px; }
-
-    /* ── Conversation list ── */
-    .convo-list { list-style: none; }
-    .convo-item {
-      padding: 12px 0;
-      border-bottom: 1px solid #1a2d1e;
-      cursor: pointer;
-      display: flex; align-items: flex-start; gap: 12px;
-    }
-    .convo-item:last-child { border-bottom: none; }
-    .convo-item:hover .convo-phone { color: #52b856; }
-    .avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: #1e3a24; display: flex; align-items: center;
-      justify-content: center; font-size: 16px; flex-shrink: 0;
-    }
-    .convo-phone { font-size: 14px; font-weight: 600; color: #d4edd6; }
-    .convo-preview { font-size: 12px; color: #6b8e6f; margin-top: 2px;
-                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                     max-width: 340px; }
-    .convo-time { font-size: 11px; color: #4a6b4d; margin-left: auto; flex-shrink: 0; }
-
-    /* ── Thread view ── */
-    .thread-header {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 20px;
-    }
-    .btn-back {
-      background: none; border: 1px solid #2d4a33; color: #8bb88d;
-      padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
-    }
-    .btn-back:hover { background: #1a2f1e; }
-    .messages { display: flex; flex-direction: column; gap: 10px; }
-    .msg {
-      max-width: 75%;
-      padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    .msg.inbound {
-      background: #1a2f1e;
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-    }
-    .msg.outbound {
-      background: #1a3a25;
-      border: 1px solid #2d5a35;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-    }
-    .msg-time { font-size: 10px; color: #4a6b4d; margin-top: 4px; }
-
-    /* ── Settings form ── */
-    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .field label { display: block; font-size: 12px; color: #8bb88d; margin-bottom: 6px; }
-    .field input, .field select {
-      width: 100%; padding: 9px 12px;
-      background: #0d1a10; border: 1px solid #2d4a33;
-      border-radius: 7px; color: #d4edd6; font-size: 14px;
-    }
-    .field input:focus { outline: none; border-color: #52b856; }
-
-    .btn-save {
-      margin-top: 20px;
-      background: #52b856; color: white; border: none;
-      padding: 10px 24px; border-radius: 7px; font-size: 14px;
-      font-weight: 600; cursor: pointer;
-    }
-    .btn-save:hover { background: #47a34b; }
-
-    /* ── Google Calendar connect ── */
-    .calendar-status {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-    }
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-    }
-    .status-dot.connected { background: #52b856; }
-    .status-dot.disconnected { background: #ef5350; }
-    .btn-connect {
-      display: inline-block; background: #1a56db; color: white;
-      padding: 9px 18px; border-radius: 7px; font-size: 13px;
-      text-decoration: none; font-weight: 600;
-    }
-    .btn-connect:hover { background: #1648c5; }
-
-    /* ── Postcode checker ── */
-    .postcode-form { display: flex; gap: 10px; align-items: flex-end; }
-    .postcode-form .field { flex: 1; }
-    .btn-check {
-      background: #2d4a33; color: #d4edd6; border: none;
-      padding: 9px 18px; border-radius: 7px; font-size: 14px; cursor: pointer;
-    }
-    .btn-check:hover { background: #3a5e42; }
-    #postcode-result {
-      margin-top: 14px; padding: 12px 16px;
-      background: #0d1a10; border: 1px solid #2d4a33;
-      border-radius: 8px; font-size: 14px; color: #8bb88d;
-      display: none;
-    }
-    #postcode-result.out-of-range { border-color: #ef5350; color: #ef5350; }
-    #postcode-result.free { border-color: #52b856; color: #52b856; }
-
-    /* ── Toast ── */
-    .toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: #1a3a25; border: 1px solid #52b856;
-      color: #d4edd6; padding: 12px 20px; border-radius: 8px;
-      font-size: 13px; opacity: 0; pointer-events: none;
-      transition: opacity 0.3s;
-      z-index: 999;
-    }
-    .toast.show { opacity: 1; }
-
-    /* ── Empty state ── */
-    .empty { text-align: center; padding: 40px; color: #4a6b4d; font-size: 14px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grafted Services â Dashboard</title>
+<style>
+/* ââ Reset & base ââ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1a10; color: #d4edd6; min-height: 100vh; display: flex; flex-direction: column; }
+/* ââ Sidebar + layout ââ */
+.layout { display: flex; flex: 1; min-height: 0; }
+.sidebar { width: 240px; background: #111f14; border-right: 1px solid #1e3a24; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-logo { padding: 24px 20px; border-bottom: 1px solid #1e3a24; }
+.sidebar-logo h1 { color: #52b856; font-size: 18px; }
+.sidebar-logo span { color: #6b8e6f; font-size: 12px; display: block; margin-top: 2px; }
+.sidebar nav { padding: 12px 0; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: #8bb88d; cursor: pointer; font-size: 14px; border-radius: 0; transition: background 0.15s; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover, .nav-item.active { background: #1a2f1e; color: #d4edd6; }
+.nav-item .icon { font-size: 16px; width: 20px; }
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid #1e3a24; }
+.sidebar-footer a { color: #6b8e6f; font-size: 12px; text-decoration: none; }
+.sidebar-footer a:hover { color: #d4edd6; }
+/* ââ Main content ââ */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { padding: 16px 28px; border-bottom: 1px solid #1e3a24; display: flex; align-items: center; justify-content: space-between; background: #111f14; }
+.topbar h2 { font-size: 18px; color: #d4edd6; }
+/* Bot toggle */
+.toggle-wrap { display: flex; align-items: center; gap: 10px; }
+.toggle-label { font-size: 13px; color: #8bb88d; }
+.toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: #2a3f2d; border-radius: 24px; transition: background 0.2s; }
+.toggle-slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: transform 0.2s; }
+.toggle input:checked + .toggle-slider { background: #52b856; }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+/* ââ Content area ââ */
+.content { flex: 1; overflow-y: auto; padding: 28px; }
+/* ââ Panels ââ */
+.panel { display: none; }
+.panel.active { display: block; }
+/* ââ Cards ââ */
+.card { background: #131f16; border: 1px solid #1e3a24; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
+.card h3 { font-size: 14px; color: #8bb88d; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
+/* ââ Stats row ââ */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.stat { background: #131f16; border: 1px solid #1e3a24; border-radius: 10px; padding: 18px 20px; }
+.stat .value { font-size: 28px; font-weight: 700; color: #52b856; }
+.stat .label { font-size: 12px; color: #6b8e6f; margin-top: 4px; }
+/* ââ Conversation list ââ */
+.convo-list { list-style: none; }
+.convo-item { padding: 12px 0; border-bottom: 1px solid #1a2d1e; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; }
+.convo-item:last-child { border-bottom: none; }
+.convo-item:hover .convo-phone { color: #52b856; }
+&avatar { width: 36px; height: 36px; border-radius: 50%; background: #1e3a24; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.convo-phone { font-size: 14px; font-weight: 600; color: #d4edd6; }
+.convo-preview { font-size: 12px; color: #6b8e6f; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+.convo-time { font-size: 11px; color: #4a6b4d; margin-left: auto; flex-shrink: 0; }
+/* ââ Thread view ââ */
+.thread-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.btn-back { background: none; border: 1px solid #2d4a33; color: #8bb88d; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-back:hover { background: #1a2f1e; }
+.btn-photo-req { background: #1a3a25; border: 1px solid #52b856; color: #52b856; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-photo-req:hover { background: #1f4a2d; }
+.btn-photo-req:disabled { opacity: 0.4; cursor: not-allowed; }
+.messages { display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+.msg.inbound { background: #1a2f1e; align-self: flex-start; border-bottom-left-radius: 4px; }
+.msg.outbound { background: #1a3a25; border: 1px solid #2d5a35; align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg-time { font-size: 10px; color: #4a6b4d; margin-top: 4px; }
+/* ââ Settings form ââ */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field label { display: block; font-size: 12px; color: #8bb88d; margin-bottom: 6px; }
+.field input, .field select { width: 100%; padding: 9px 12px; background: #0d1a10; border: 1px solid #2d4a33; border-radius: 7px; color: #d4edd6; font-size: 14px; }
+.field input:focus { outline: none; border-color: #52b856; }
+.btn-save { margin-top: 20px; background: #52b856; color: white; border: none; padding: 10px 24px; border-radius: 7px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-save:hover { background: #47a34b; }
+/* ââ Google Calendar connect ââ */
+.calendar-status { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; }
+.status-dot.connected { background: #52b856; }
+.status-dot.disconnected { background: #ef5350; }
+.btn-connect { display: inline-block; background: #1a56db; color: white; padding: 9px 18px; border-radius: 7px; font-size: 13px; text-decoration: none; font-weight: 600; }
+.btn-connect:hover { background: #1648c5; }
+/* ââ Postcode checker ââ */
+.postcode-form { display: flex; gap: 10px; align-items: flex-end; }
+.postcode-form .field { flex: 1; }
+.btn-check { background: #2d4a33; color: #d4edd6; border: none; padding: 9px 18px; border-radius: 7px; font-size: 14px; cursor: pointer; }
+.btn-check:hover { background: #3a5e42; }
+#postcode-result { margin-top: 14px; padding: 12px 16px; background: #0d1a10; border: 1px solid #2d4a33; border-radius: 8px; font-size: 14px; color: #8bb88d; display: none; }
+#postcode-result.out-of-range { border-color: #ef5350; color: #ef5350; }
+#postcode-result.free { border-color: #52b856; color: #52b856; }
+/* ââ Photos panel ââ */
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.photo-card { background: #0d1a10; border: 1px solid #1e3a24; border-radius: 10px; overflow: hidden; }
+.photo-card img { width: 100%; max-height: 200px; object-fit: cover; display: block; background: #1a2d1e; cursor: pointer; }
+.photo-card-body { padding: 14px; }
+.photo-meta { font-size: 11px; color: #4a6b4d; margin-bottom: 8px; }
+.photo-phone { font-size: 14px; font-weight: 600; color: #d4edd6; margin-bottom: 6px; }
+.photo-assessment { font-size: 13px; color: #8bb88d; line-height: 1.5; margin-bottom: 10px; }
+.photo-quote-sent { background: #1a3a25; border: 1px solid #2d5a35; border-radius: 7px; padding: 8px 12px; font-size: 13px; color: #52b856; }
+.photo-quote-sent strong { display: block; font-size: 11px; color: #4a6b4d; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+.badge-pending { display: inline-block; background: #2a2a1a; border: 1px solid #5a5a20; color: #c8c840; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+.badge-done { display: inline-block; background: #1a3a25; border: 1px solid #2d5a35; color: #52b856; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+/* Lightbox*/
+#lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 999; align-items: center; justify-content: center; }
+#lightbox.open { display: flex; }
+#lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 8px; object-fit: contain; }
+#lightbox-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: white; font-size: 32px; cursor: pointer; line-height: 1; }
+/* ââ Toast ââ */
+.toast { position: fixed; bottom: 24px; right: 24px; background: #1a3a25; border: 1px solid #52b856; color: #d4edd6; padding: 12px 20px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 999; }
+.toast.show { opacity: 1; }
+/* ââ Empty state ââ */
+.empty { text-align: center; padding: 40px; color: #4a6b4d; font-size: 14px; }
+</style>
 </head>
 <body>
-
 <div class="layout">
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <h1>🌳 Grafted</h1>
+      <h1>ð³ Grafted</h1>
       <span>AI Receptionist</span>
     </div>
     <nav>
       <button class="nav-item active" data-panel="overview" onclick="showPanel('overview', this)">
-        <span class="icon">📊</span> Overview
+        <span class="icon">ð</span> Overview
       </button>
       <button class="nav-item" data-panel="conversations" onclick="showPanel('conversations', this)">
-        <span class="icon">💬</span> Conversations
+        <span class="icon">ð¬</span> Conversations
       </button>
       <button class="nav-item" data-panel="appointments" onclick="showPanel('appointments', this)">
-        <span class="icon">📅</span> Appointments
+        <span class="icon">ð</span> Appointments
+      </button>
+      <button class="nav-item" data-panel="photos" onclick="showPanel('photos', this)">
+        <span class="icon">ð¸</span> Photos
       </button>
       <button class="nav-item" data-panel="settings" onclick="showPanel('settings', this)">
-        <span class="icon">⚙️</span> Settings
+        <span class="icon">êï¸</span> Settings
       </button>
       <button class="nav-item" data-panel="postcode" onclick="showPanel('postcode', this)">
-        <span class="icon">📍</span> Postcode Check
+        <span class="icon">ð</span> Postcode Check
       </button>
     </nav>
     <div class="sidebar-footer">
@@ -300,96 +161,88 @@
     </div>
 
     <div class="content">
-
-      <!-- ── Overview ── -->
+      <!-- ââ Overview ââ -->
       <div id="panel-overview" class="panel active">
         <div class="stats" id="stats-row">
-          <div class="stat"><div class="value" id="stat-convos">—</div><div class="label">Conversations</div></div>
-          <div class="stat"><div class="value" id="stat-today">—</div><div class="label">Messages today</div></div>
-          <div class="stat"><div class="value" id="stat-appts">—</div><div class="label">Appointments booked</div></div>
+          <div class="stat"><div class="value" id="stat-convos">â</div><div class="label">Conversations</div></div>
+          <div class="stat"><div class="value" id="stat-today">â</div><div class="label">Messages today</div></div>
+          <div class="stat"><div class="value" id="stat-appts">â</div><div class="label">Appointments booked</div></div>
+          <div class="stat"><div class="value" id="stat-photos">â</div><div class="label">Photo quotes</div></div>
         </div>
-
         <div class="card">
           <h3>Recent conversations</h3>
-          <ul class="convo-list" id="overview-convos">
-            <li class="empty">Loading…</li>
-          </ul>
+          <ul class="convo-list" id="overview-convos"><li class="empty">Loadingâ¦</li></ul>
         </div>
-
         <div class="card">
           <h3>Google Calendar</h3>
           <div class="calendar-status">
             <div class="status-dot" id="cal-dot"></div>
-            <span id="cal-status-text">Checking…</span>
+            <span id="cal-status-text">Checkingâ¦</span>
           </div>
           <a href="/dashboard/auth/google" class="btn-connect" id="cal-connect-btn" style="display:none">
             Connect Google Calendar
-          </a>
+          <//a>
         </div>
       </div>
 
-      <!-- ── Conversations ── -->
+      <!-- ââ Conversations ââ -->
       <div id="panel-conversations" class="panel">
         <div id="convo-list-view">
           <div class="card">
             <h3>All conversations</h3>
-            <ul class="convo-list" id="all-convos">
-              <li class="empty">Loading…</li>
-            </ul>
+            <ul class="convo-list" id="all-convos"><li class="empty">Loadingâ¦</li></ul>
           </div>
         </div>
-
         <div id="thread-view" style="display:none">
           <div class="thread-header">
-            <button class="btn-back" onclick="showConvoList()">← Back</button>
+            <button class="btn-back" onclick="showConvoList()">â Back</button>
             <span id="thread-phone" style="font-weight:600;font-size:15px;"></span>
+            <button class="btn-photo-req" id="btn-request-photo" onclick="requestPhoto()">ð· Request Photo</button>
           </div>
           <div class="messages" id="thread-messages"></div>
         </div>
       </div>
 
-      <!-- ── Appointments ── -->
+      <!-- ââ Appointments ââ -->
       <div id="panel-appointments" class="panel">
         <div class="card">
           <h3>Booked appointments</h3>
-          <div id="appt-list"><div class="empty">Loading…</div></div>
+          <div id="appt-list"><div class="empty">Loadingâ¦</div></div>
         </div>
       </div>
 
-      <!-- ── Settings ── -->
+      <!-- ââ Photos ââ -->
+      <div id="panel-photos" class="panel">
+        <div class="card">
+          <h3>Photo quote requests</h3>
+          <div id="photo-list"><div class="empty">Loadingâ¦</div></div>
+        </div>
+      </div>
+
+      <!-- ââ Settings ââ -->
       <div id="panel-settings" class="panel">
         <div class="card">
           <h3>Rates</h3>
           <div class="settings-grid">
-            <div class="field">
-              <label>Day rate (£)</label>
-              <input type="number" id="s-day-rate" min="0">
-            </div>
-            <div class="field">
-              <label>Half-day rate (£)</label>
-              <input type="number" id="s-half-rate" min="0">
-            </div>
-            <div class="field">
-              <label>Small job rate from (£)</label>
-              <input type="number" id="s-small-rate" min="0">
-            </div>
+            <div class="field"><label>Day rate (Â£)</label><input type="number" id="s-day-rate" min="0"></div>
+            <div class="field"><label>Half-day rate (Â£)</label><input type="number" id="s-half-rate" min="0"></div>
+            <div class="field"><label>Small job rate from (Â£)</label><input type="number" id="s-small-rate" min="0"></div>
           </div>
           <button class="btn-save" onclick="saveSettings()">Save rates</button>
         </div>
       </div>
 
-      <!-- ── Postcode checker ── -->
+      <!-- ââ Postcode checker ââ -->
       <div id="panel-postcode" class="panel">
         <div class="card">
           <h3>Callout fee calculator</h3>
           <p style="font-size:13px;color:#6b8e6f;margin-bottom:16px;">
-            Free within 10 miles of Didsbury M20 · £1.50/mile beyond · No travel beyond 25 miles
+            Free within 10 miles of Didsbury M20 Â· Â£1.50/mile beyond Â· No travel beyond 25 miles
           </p>
           <div class="postcode-form">
             <div class="field">
               <label>Customer postcode</label>
-              <input type="text" id="pc-input" placeholder="e.g. SK4 3AH"
-                     onkeydown="if(event.key==='Enter') checkPostcode()">
+              <input type="text" id="pc-input" placeholder="e.g. SK4 3AH" onkeydown="if(event.key==='Enter') checkPostcode()">
             </div>
             <button class="btn-check" onclick="checkPostcode()">Check</button>
           </div>
@@ -401,11 +254,16 @@
   </div><!-- /main -->
 </div><!-- /layout -->
 
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <button id="lightbox-close" onclick="closeLightbox()">â</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-// ── Utilities ──────────────────────────────────────────────────────────────────
-
+// ââ Utilities ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -422,6 +280,7 @@ function showPanel(id, el) {
   if (id === 'conversations') loadAllConvos();
   if (id === 'appointments') loadAppointments();
   if (id === 'settings') loadSettings();
+  if (id === 'photos') loadPhotos();
 }
 
 function timeAgo(dateStr) {
@@ -434,23 +293,22 @@ function timeAgo(dateStr) {
 }
 
 function formatTime(dateStr) {
-  return new Date(dateStr).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-  });
+  return new Date(dateStr).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Bot toggle ─────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
+// ââ Bot toggle âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function loadStatus() {
   try {
     const r = await fetch('/dashboard/api/status');
     const data = await r.json();
-
     const toggle = document.getElementById('bot-toggle');
     const label = document.getElementById('bot-label');
     toggle.checked = data.botEnabled;
     label.textContent = data.botEnabled ? 'Bot: ON' : 'Bot: OFF';
-
     const dot = document.getElementById('cal-dot');
     const text = document.getElementById('cal-status-text');
     const btn = document.getElementById('cal-connect-btn');
@@ -473,37 +331,27 @@ async function toggleBot(el) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ bot_enabled: enabled ? 'true' : 'false' }),
   });
-  showToast(enabled ? '🤖 Bot enabled' : '🔴 Bot paused');
+  showToast(enabled ? 'ð¤ Bot enabled' : 'ð´ Bot paused');
 }
 
-// ── Overview conversations ─────────────────────────────────────────────────────
-
+// ââ Overview âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function loadOverview() {
   const r = await fetch('/dashboard/api/conversations');
   const convos = await r.json();
-
-  // Stats
   document.getElementById('stat-convos').textContent = convos.length;
-
-  const today = convos.filter(c => {
-    return new Date(c.last_message).toDateString() === new Date().toDateString();
-  });
+  const today = convos.filter(c => new Date(c.last_message).toDateString() === new Date().toDateString());
   document.getElementById('stat-today').textContent = today.length;
-
-  // Appointments
   const ar = await fetch('/dashboard/api/appointments');
   const appts = await ar.json();
   document.getElementById('stat-appts').textContent = appts.length;
-
-  // Recent list (top 5)
+  const pr = await fetch('/dashboard/api/photo-quotes?limit=100');
+  const photos = await pr.json();
+  document.getElementById('stat-photos').textContent = photos.filter(p => p.used).length;
   const ul = document.getElementById('overview-convos');
-  if (!convos.length) {
-    ul.innerHTML = '<li class="empty">No conversations yet</li>';
-    return;
-  }
+  if (!convos.length) { ul.innerHTML = '<li class="empty">No conversations yet</li>'; return; }
   ul.innerHTML = convos.slice(0, 5).map(c => `
     <li class="convo-item" onclick="openThread('${encodeURIComponent(c.phone)}')">
-      <div class="avatar">📱</div>
+      <div class="avatar">ð±</div>
       <div style="flex:1;min-width:0">
         <div class="convo-phone">${c.phone}</div>
         <div class="convo-preview">${escHtml(c.last_body || '')}</div>
@@ -513,19 +361,15 @@ async function loadOverview() {
   `).join('');
 }
 
-// ── All conversations ──────────────────────────────────────────────────────────
-
+// ââ All conversations ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function loadAllConvos() {
   const r = await fetch('/dashboard/api/conversations');
   const convos = await r.json();
   const ul = document.getElementById('all-convos');
-  if (!convos.length) {
-    ul.innerHTML = '<li class="empty">No conversations yet</li>';
-    return;
-  }
+  if (!convos.length) { ul.innerHTML = '<li class="empty">No conversations yet</li>'; return; }
   ul.innerHTML = convos.map(c => `
     <li class="convo-item" onclick="openThread('${encodeURIComponent(c.phone)}')">
-      <div class="avatar">📱</div>
+      <div class="avatar">ð±</div>
       <div style="flex:1;min-width:0">
         <div class="convo-phone">${c.phone}</div>
         <div class="convo-preview">${escHtml(c.last_body || '')}</div>
@@ -535,15 +379,19 @@ async function loadAllConvos() {
   `).join('');
 }
 
+let currentThreadPhone = null;
+
 async function openThread(encodedPhone) {
   const phone = decodeURIComponent(encodedPhone);
+  currentThreadPhone = phone;
   document.getElementById('convo-list-view').style.display = 'none';
   document.getElementById('thread-view').style.display = 'block';
   document.getElementById('thread-phone').textContent = phone;
-
+  const btn = document.getElementById('btn-request-photo');
+  btn.disabled = false;
+  btn.textContent = 'ð· Request Photo';
   const r = await fetch(`/dashboard/api/conversations/${encodedPhone}`);
   const msgs = await r.json();
-
   const container = document.getElementById('thread-messages');
   container.innerHTML = msgs.map(m => `
     <div class="msg ${m.direction}">
@@ -555,31 +403,98 @@ async function openThread(encodedPhone) {
 }
 
 function showConvoList() {
+  currentThreadPhone = null;
   document.getElementById('convo-list-view').style.display = 'block';
   document.getElementById('thread-view').style.display = 'none';
 }
 
-// ── Appointments ───────────────────────────────────────────────────────────────
+async function requestPhoto() {
+  if (!currentThreadPhone) return;
+  const btn = document.getElementById('btn-request-photo');
+  btn.disabled = true;
+  btn.textContent = 'Sendingâ¦';
+  try {
+    const r = await fetch('/api/quote/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentThreadPhone })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast('ð· Photo link sent to ' + currentThreadPhone);
+      btn.textContent = 'â Link sent';
+    } else {
+      showToast('Failed to send link: ' + (data.error || 'unknown error'));
+      btn.disabled = false;
+      btn.textContent = 'ð· Request Photo';
+    }
+  } catch(e) {
+    showToast('Network error sending link');
+    btn.disabled = false;
+    btn.textContent = 'ð· Request Photo';
+  }
+}
 
+// ââ Appointments âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function loadAppointments() {
   const r = await fetch('/dashboard/api/appointments');
   const appts = await r.json();
   const container = document.getElementById('appt-list');
-  if (!appts.length) {
-    container.innerHTML = '<div class="empty">No appointments booked yet</div>';
-    return;
-  }
+  if (!appts.length) { container.innerHTML = '<div class="empty">No appointments booked yet</div>'; return; }
   container.innerHTML = appts.map(a => `
     <div style="padding:12px 0;border-bottom:1px solid #1a2d1e;">
       <div style="font-weight:600;font-size:14px;">${escHtml(a.summary || 'Tree work')}</div>
       <div style="font-size:12px;color:#6b8e6f;margin-top:3px;">
-        ${a.phone} · ${a.start_time ? formatTime(a.start_time) : 'Time TBC'}
+        ${a.phone} Â· ${a.start_time ? formatTime(a.start_time) : 'Time TBC'}
       </div>
     </div>
   `).join('');
 }
 
-// ── Settings ───────────────────────────────────────────────────────────────────
+// ââ Photos âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+async function loadPhotos() {
+  const r = await fetch('/dashboard/api/photo-quotes');
+  const photos = await r.json();
+  const container = document.getElementById('photo-list');
+  if (!photos.length) { container.innerHTML = '<div class="empty">No photo quotes yet</div>'; return; }
+  container.innerHTML = '<div class="photo-grid">' + photos.map(p => {
+    const statusBadge = p.used
+      ? '<span class="badge-done">Quote sent</span>'
+      : '<span class="badge-pending">Awaiting photo</span>';
+    const imgHtml = p.used && p.image_data
+      ? `<img src="/dashboard/api/photo-quotes/${escHtml(p.id)}/image" alt="Customer photo" loading="lazy" onclick="openLightbox(this.src)">`
+      : `<div style="height:120px;display:flex;align-items:center;justify-content:center;background:#1a2d1e;color:#4a6b4d;font-size:13px;">No photo yet</div>`;
+    const assessHtml = p.assessment
+      ? `<div class="photo-assessment">${escHtml(p.assessment)}</div>`
+      : '';
+    const quoteHtml = p.quote_sent
+      ? `<div class="photo-quote-sent"><strong>Quote texted to customer</strong>${escHtml(p.quote_sent)}</div>`
+      : '';
+    return `
+      <div class="photo-card">
+        ${imgHtml}
+        <div class="photo-card-body">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div class="photo-phone">${escHtml(p.phone)}</div>
+            ${statusBadge}
+          </div>
+          <div class="photo-meta">${p.submitted_at ? 'Submitted ' + timeAgo(p.submitted_at) : 'Created ' + timeAgo(p.created_at)}</div>
+          ${assessHtml}
+          ${quoteHtml}
+        </div>
+      </div>
+    `;
+  }).join('') + '</div>';
+}
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
 async function loadSettings() {
   const r = await fetch('/dashboard/api/settings');
@@ -589,7 +504,7 @@ async function loadSettings() {
   document.getElementById('s-small-rate').value = s.small_job_rate || '';
 }
 
-async function saveSettings() {
+acync function saveSettings() {
   const payload = {
     day_rate: document.getElementById('s-day-rate').value,
     half_day_rate: document.getElementById('s-half-rate').value,
@@ -600,10 +515,8 @@ async function saveSettings() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  showToast('✅ Rates saved');
+  showToast('â Rates saved');
 }
-
-// ── Postcode checker ───────────────────────────────────────────────────────────
 
 async function checkPostcode() {
   const pc = document.getElementById('pc-input').value.trim();
@@ -611,8 +524,7 @@ async function checkPostcode() {
   const result = document.getElementById('postcode-result');
   result.style.display = 'block';
   result.className = '';
-  result.textContent = 'Checking…';
-
+  result.textContent = 'Checkingâ¦';
   try {
     const r = await fetch(`/api/postcode/${encodeURIComponent(pc)}`);
     const data = await r.json();
@@ -624,16 +536,6 @@ async function checkPostcode() {
   }
 }
 
-// ── Escape HTML ────────────────────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
-}
-
-// ── Init ───────────────────────────────────────────────────────────────────────
 loadStatus();
 loadOverview();
 </script>
