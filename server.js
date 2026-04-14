@@ -8,7 +8,7 @@ const {
   getConversation, addMessage, clearConversation, getSetting,
   createQuoteRequest, getQuoteRequest, fulfillQuoteRequest,
 } = require('./db');
-const { getAIReply, parseBooking, cleanReply, assessImage, assessImageData } = require('./ai');
+const { getAIReply, parseBooking, cleanReply, cleanResponse, assessImage, assessImageData } = require('./ai');
 const { bookEvent } = require('./calendar');
 const { calculateCalloutFee, extractPostcode } = require('./postcode');
 
@@ -112,7 +112,7 @@ app.post('/sms-incoming', async (req, res) => {
       const rawReply = await getAIReply(callerNumber, history);
       const bookingData = parseBooking(rawReply);
       const needsPhoto = rawReply.includes('##PHOTO_REQUEST##');
-      reply = cleanReply(rawReply);
+      reply = cleanResponse(cleanReply(rawReply));
 
       // Auto-generate photo link if bot requested it
       if (needsPhoto) {
@@ -146,7 +146,7 @@ app.post('/sms-incoming', async (req, res) => {
     console.log(`â Replied to ${callerNumber}: ${reply}`);
   } catch (err) {
     console.error('â SMS handler error:', err.message);
-    twiml.message(`Sorry, just give ${process.env.BUSINESS_OWNER_NAME} a ring back when you get a chance!`);
+    twiml.message("Sorry something went wrong, try sending that again!");
   }
 
   res.type('text/xml');
