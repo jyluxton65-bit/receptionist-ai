@@ -54,7 +54,7 @@ app.post('/demo/call-missed', async (req, res) => {
   const callerNumber = req.body.From;
   const twiml        = new twilio.twiml.VoiceResponse();
 
-  const opener = `Hi, it's Joe from Joe's Tree Services. Sorry I missed your call, I'm on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
+  const opener = `Hi, this is Sarah from Joe's Tree Services. Sorry Joe missed your call, he's out on a job. What was it you were after? I'll get him to sort it for you.`;
 
   try {
     await twilioClient.messages.create({
