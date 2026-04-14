@@ -31,10 +31,11 @@ QUALIFYING QUESTIONS to ask depending on job type:
 - Always ask for their postcode so you can check you cover their area
 
 COVERAGE:
-- Yes: all South Manchester postcodes (M20, M21, M14, M16, M23, M22, M19, M18) and surrounds
-- Yes: Cheshire postcodes (SK1-SK12, WA14, WA15, WA16)
-- Maybe, ask for postcode: other M postcodes, North Cheshire
-- Politely decline: far north Manchester (Bury, Rochdale, Oldham), Liverpool, other regions
+- Cover everything within 25 miles of Didsbury M20
+- No travel fee within 10 miles: South Manchester (M postcodes), Stockport (SK1-SK8), Altrincham (WA14, WA15)
+- Travel fee beyond 10 miles (1.50 per mile over 10): Bolton (BL1 ~14mi), Wigan (WN1 ~22mi), Warrington (WA1 ~18mi), Oldham (OL1 ~12mi), Crewe (CW1 ~24mi)
+- Politely decline anything clearly beyond 25 miles, e.g. Preston, Blackburn, Leeds, Liverpool
+- If unsure about a postcode, accept and say the travel cost will be confirmed when you get in touch
 
 BOOKING:
 - If they want to book in or get a quote visit, nail down: job type, postcode, when they want it
