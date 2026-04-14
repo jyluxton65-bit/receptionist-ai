@@ -112,13 +112,76 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .toast.show { opacity: 1; }
 /* ââ Empty state ââ */
 .empty { text-align: center; padding: 40px; color: #4a6b4d; font-size: 14px; }
+
+/* ── Mobile sidebar ──────────────────────────────────── */
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  color: #d4edd6;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 2px 8px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 150;
+}
+.sidebar-overlay.open { display: block; }
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #8bb88d;
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 6px;
+}
+@media (max-width: 767px) {
+  .hamburger { display: block; }
+  .sidebar-close { display: block; }
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    z-index: 200;
+    transition: left 0.25s ease;
+    width: 240px;
+    overflow-y: auto;
+  }
+  .sidebar.open {
+    left: 0;
+    box-shadow: 6px 0 24px rgba(0,0,0,0.6);
+  }
+  .topbar { padding: 12px 14px; gap: 10px; }
+  .content { padding: 16px; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .photo-grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .convo-preview { max-width: 180px; }
+  .msg { max-width: 90%; }
+  .thread-header { gap: 8px; }
+  .btn-photo-req { font-size: 12px; padding: 5px 10px; }
+}
 </style>
 </head>
 <body>
 <div class="layout">
   <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo" style="position:relative;">
+        <button class="sidebar-close" onclick="closeSidebar()" aria-label="Close">&#10005;</button>
       <h1>ð³ Grafted</h1>
       <span>AI Receptionist</span>
     </div>
@@ -150,7 +213,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <!-- Main -->
   <div class="main">
     <div class="topbar">
-      <h2 id="page-title">Overview</h2>
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
+          <h2 id="page-title">Overview</h2>
       <div class="toggle-wrap">
         <span class="toggle-label" id="bot-label">Bot: ON</span>
         <label class="toggle">
@@ -181,7 +245,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           </div>
           <a href="/dashboard/auth/google" class="btn-connect" id="cal-connect-btn" style="display:none">
             Connect Google Calendar
-          <//a>
+          </a>
         </div>
       </div>
 
@@ -504,7 +568,7 @@ async function loadSettings() {
   document.getElementById('s-small-rate').value = s.small_job_rate || '';
 }
 
-acync function saveSettings() {
+async function saveSettings() {
   const payload = {
     day_rate: document.getElementById('s-day-rate').value,
     half_day_rate: document.getElementById('s-half-rate').value,
