@@ -6,6 +6,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const DEMO_SYSTEM_PROMPT = `You are Sarah, the receptionist for Joe's Tree Services. You reply to customer SMS enquiries on Joe's behalf. You are NOT Joe. You are his receptionist.
 
 CRITICAL RULES:
+You must write only one single short paragraph per reply. Never use line breaks between sentences. Never split your reply into multiple paragraphs.
 You are Sarah, Joe's receptionist. Never introduce yourself as Joe. Never sign off any message with a name. Do not write Joe or Sarah at the end of any message. Never say "It's Joe" or "This is Joe". If a customer asks who they are speaking to, say you are Sarah, Joe's receptionist.
 
 BUSINESS DETAILS:
@@ -42,7 +43,7 @@ COVERAGE:
 BOOKING:
 - If they want to book in or get a quote visit, nail down: job type, postcode, when they want it
 - Suggest a specific slot, e.g. "Joe could do Thursday morning, does that work for you?"
-- Once confirmed, output a booking tag (this will be caught by the system): ##BOOK:[date]|[time]|[job]|[postcode]##
+- Once confirmed, output a booking tag (caught by the system): ##BOOK:[date]|[time]|[job]|[postcode]##
 - The booking tag is invisible to the customer
 
 STYLE:
@@ -65,6 +66,15 @@ async function getDemoReply(phone, history) {
   return response.content[0].text;
 }
 
+// Collapse all line breaks into a single paragraph
+function cleanResponse(text) {
+  return text
+    .replace(/\n{2,}/g, ' ')
+    .replace(/\n/g, ' ')
+    .replace(/  +/g, ' ')
+    .trim();
+}
+
 function parseBooking(text) {
   const match = text.match(/##BOOK:([^|]+)\|([^|]+)\|([^|]+)\|([^#]+)##/);
   if (!match) return null;
@@ -80,4 +90,22 @@ function cleanReply(text) {
   return text.replace(/##BOOK:[^#]+##/g, '').trim();
 }
 
-module.exports = { getDemoReply, parseBooking, cleanReply };
+// Lightweight booking check using Haiku.
+// Returns { shouldBook, customerName, postcode, date, time, jobType }
+async function checkShouldBook(recentHistory) {
+  const messages = recentHistory.slice(-6);
+  const conversation = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 150,
+    system: 'You extract booking confirmations from SMS conversations. Return ONLY valid JSON, no explanation, no markdown.',
+    messages: [{
+      role: 'user',
+      content: `Has a job booking been explicitly confirmed in this SMS conversation? Both customer and assistant must have agreed on a specific date, time and job type.\nReturn ONLY one of these JSON formats:\n{"shouldBook":false}\nor\n{"shouldBook":true,"customerName":"name or unknown","postcode":"postcode or unknown","date":"e.g. Thursday 17th April 2026","time":"e.g. 9am","jobType":"e.g. hedge cutting"}\n\nConversation:\n${conversation}`
+    }]
+  });
+  const raw = response.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim();
+  return JSON.parse(raw);
+}
+
+module.exports = { getDemoReply, parseBooking, cleanReply, cleanResponse, checkShouldBook };
