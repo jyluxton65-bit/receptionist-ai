@@ -19,7 +19,7 @@ const assessImage = async (imageUrl, mimeType='image/jpeg', caption='') => {
   const imgResp = await axios.get(imageUrl, {responseType:'arraybuffer',auth:{username:process.env.TWILIO_ACCOUNT_SID,password:process.env.TWILIO_AUTH_TOKEN}});
   const b64 = Buffer.from(imgResp.data).toString('base64');
   const prompt = caption ? `Customer said: "${caption}". Assess the tree/vegetation work visible and provide a rough quote range in 2-3 SMS-short sentences.` : 'Assess the tree/vegetation work in this photo and provide a rough quote range in 2-3 SMS-short sentences.';
-  const r = await client.messages.create({model:'claude-opus-4-6',max_tokens;400,system:buildSystemPrompt(),messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:prompt}]}]});
+  const r = await client.messages.create({model:'claude-opus-4-6',max_tokens: 400,system:buildSystemPrompt(),messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:prompt}]}]});
   return r.content[0].text.trim();
 };
 
