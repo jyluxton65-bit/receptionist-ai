@@ -69,9 +69,14 @@ async function getDemoReply(phone, history) {
 // Collapse all line breaks into a single paragraph
 function cleanResponse(text) {
   return text
-    .replace(/\n{2,}/g, ' ')
-    .replace(/\n/g, ' ')
-    .replace(/  +/g, ' ')
+    .replace(/ - /g, ', ')
+    .replace(/ – /g, ', ')
+    .replace(/ — /g, ', ')
+    .replace(/
+{2,}/g, ' ')
+    .replace(/
+/g, ' ')
+    .replace(/ +/g, ' ')
     .trim();
 }
 
