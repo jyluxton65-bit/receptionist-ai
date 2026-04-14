@@ -108,23 +108,22 @@ app.post('/demo/sms-incoming', async (req, res) => {
   }
 
   try {
-    const history  = getConversation(from);
+    const history = getConversation(from);
     const rawReply = await getDemoReply(from, history);
-    const booking  = parseBooking(rawReply);
-    const reply    = cleanReply(rawReply);
-
+    const reply = cleanResponse(cleanReply(rawReply));
     addMessage(from, 'assistant', reply);
-
-    if (booking) {
-      console.log(`📅 [Demo] Booking detected: ${JSON.stringify(booking)}`);
-      // In a real deployment this would call bookEvent() — demo just logs it
-    }
-
+    checkShouldBook(getConversation(from)).then(result => {
+      if (result.shouldBook) {
+        bookEvent({ date: result.date, time: result.time, job: result.jobType, postcode: result.postcode, callerNumber: from })
+          .then(() => console.log('✅ [Demo] Calendar event booked for ' + from))
+          .catch(err => console.error('❌ [Demo] Calendar booking failed:', err.message));
+      }
+    }).catch(() => {});
     twiml.message(reply);
-    console.log(`✅ [Demo] Replied to ${from}: ${reply}`);
+    console.log('✅ [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
     console.error('❌ [Demo] Error:', err.message);
-    twiml.message(`Sorry, just give Joe a ring back when you get a chance.`);
+    twiml.message("Sorry something went wrong, try sending that again!");
   }
 
   res.type('text/xml');
