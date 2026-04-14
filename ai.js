@@ -7,7 +7,7 @@ const { buildSystemPrompt } = require('./src/systemPrompt');
 
 const getAIReply = async (callerNumber, conversationHistory) => {
   const response = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: buildSystemPrompt(), messages: conversationHistory });
-  return response.content.find(b => b.type === 'text')?.text || "Sorry, just give us a call back when you get a chance!";
+  return response.content.find(b => b.type === 'text')?.text || "Sorry something went wrong, try sending that again!";
 };
 
 const parseBooking = (text) => { const m=text.match(/##BOOK:(.+?)\|(.+?)\|(.+?)\|(.+?)##/);if(m)return {date:m[1].trim(),time:m[2].trim(),job:m[3].trim(),postcode:m[4].trim()};return null; };
@@ -43,4 +43,15 @@ const assessImageData = async (b64, mimeType='image/jpeg', caption='') => {
   return r.content[0].text.trim();
 };
 
-module.exports = { getAIReply, parseBooking, cleanReply, assessImage, assessImageData };
+const cleanResponse = (text) => {
+  return text
+    .replace(/ - /g, ', ')
+    .replace(/ – /g, ', ')
+    .replace(/ — /g, ', ')
+    .replace(/\n{2,}/g, ' ')
+    .replace(/\n/g, ' ')
+    .replace(/ +/g, ' ')
+    .trim();
+};
+
+module.exports = { getAIReply, parseBooking, cleanReply, cleanResponse, assessImage, assessImageData };
