@@ -78,13 +78,12 @@ app.post('/sms-incoming', async (req, res) => {
     let reply;
 
     if (numMedia > 0 && mediaUrl) {
-      console.log(`ð¼ï¸ MMS received: ${mediaUrl}`);
-      try {
-        reply = await assessImage(mediaUrl, mediaType, incomingMessage);
-      } catch (imgErr) {
-        console.error('Image assessment failed:', imgErr.message);
-        reply = "Thanks for the photo! I've passed it to the team who'll be in touch with a quote shortly.";
-      }
+      // Customer sent an image directly — generate a photo quote link
+      const quoteId = crypto.randomBytes(8).toString('hex');
+      createQuoteRequest(quoteId, callerNumber);
+      const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+      const link = `${baseUrl}/quote/${quoteId}`;
+      reply = `To get you an accurate quote I'll need to see the photo properly — could you upload it here: ${link}. Takes 30 seconds!`;
     } else {
       const postcode = extractPostcode(incomingMessage);
       let postcodeNote = '';
