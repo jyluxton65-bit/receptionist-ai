@@ -70,12 +70,10 @@ async function getDemoReply(phone, history) {
 function cleanResponse(text) {
   return text
     .replace(/ - /g, ', ')
-    .replace(/ – /g, ', ')
-    .replace(/ — /g, ', ')
-    .replace(/
-{2,}/g, ' ')
-    .replace(/
-/g, ' ')
+    .replace(/ \u2013 /g, ', ')
+    .replace(/ \u2014 /g, ', ')
+    .replace(/\n{2,}/g, ' ')
+    .replace(/\n/g, ' ')
     .replace(/ +/g, ' ')
     .trim();
 }
