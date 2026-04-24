@@ -261,4 +261,21 @@ app.get('/health', (req, res) => res.json({
   paused: isPaused(),
 }));
 
+
+// ── Photo Quotes API ────────────────────────────
+app.get('/demo/api/photo-quotes', (req, res) => {
+  const { getRecentPhotoQuotes } = require('../db');
+  res.json(getRecentPhotoQuotes(50));
+});
+
+app.get('/demo/api/photo-quotes/:id/image', (req, res) => {
+  const { getQuoteRequest } = require('../db');
+  const row = getQuoteRequest(req.params.id);
+  if (!row || !row.image_data) return res.status(404).send('Not found');
+  const mime = row.image_mime || 'image/jpeg';
+  const buf = Buffer.from(row.image_data, 'base64');
+  res.setHeader('Content-Type', mime);
+  res.send(buf);
+});
+
 module.exports = app;
