@@ -428,7 +428,18 @@
       vertical-align: middle;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+  
+  .photo-item { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .photo-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .photo-phone { font-weight: 600; font-size: 14px; }
+  .photo-time { font-size: 12px; color: #8b949e; }
+  .status-done { background: #1a3a25; color: #56d364; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; }
+  .status-pending { background: #2d1f06; color: #d29922; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; }
+  .photo-thumb { width: 100%; max-height: 180px; object-fit: cover; border-radius: 7px; margin-bottom: 8px; }
+  .photo-assessment { font-size: 13px; background: #1c2128; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+  .photo-quote-sent { font-size: 13px; background: #1a3a25; border: 1px solid #2d5a35; border-radius: 6px; padding: 7px 10px; }
+  .photo-quote-sent strong { display: block; font-size: 11px; color: #4a6b4d; margin-bottom: 2px; text-transform: uppercase; }
+</style>
 </head>
 <body>
 
@@ -472,6 +483,12 @@
       <span class="btn-icon">⏱</span>
       <span>I'm Running Late</span>
     </button>
+  </div>
+
+  <!-- Photo Requests -->
+  <div class="section-header">📸 Photo Requests</div>
+  <div class="photo-list" id="photoList">
+    <div class="empty-state">Loading…</div>
   </div>
 
   <!-- Conversations -->
@@ -768,9 +785,30 @@
 
   // ── Init & polling ───────────────────────────────────────────────────────
 
+
+  async function loadPhotos() {
+    try {
+      const r = await fetch('/demo/api/photo-quotes');
+      const photos = await r.json();
+      const list = document.getElementById('photoList');
+      if (!photos.length) { list.innerHTML = '<div class="empty-state">No photo requests yet.</div>'; return; }
+      list.innerHTML = photos.map(p => {
+        const date = new Date(p.created_at).toLocaleDateString('en-GB', {day:'numeric',month:'short'});
+        const status = p.submitted_at ? '<span class="status-done">Received</span>' : '<span class="status-pending">Awaiting</span>';
+        const img = p.submitted_at ? '<img class="photo-thumb" src="/demo/api/photo-quotes/' + escHtml(p.id) + '/image" alt="Customer photo">' : '';
+        const assess = p.assessment ? '<div class="photo-assessment">' + escHtml(p.assessment) + '</div>' : '';
+        const quote = p.quote_sent ? '<div class="photo-quote-sent"><strong>Quote texted</strong>' + escHtml(p.quote_sent) + '</div>' : '';
+        return '<div class="photo-item"><div class="photo-meta"><span class="photo-phone">' + escHtml(p.phone) + '</span><span class="photo-time">' + date + '</span>' + status + '</div>' + img + assess + quote + '</div>';
+      }).join('');
+    } catch (_) {
+      document.getElementById('photoList').innerHTML = '<div class="empty-state">Could not load photos.</div>';
+    }
+  }
+
   function tick() {
     loadStatus();
     loadConversations();
+    loadPhotos();
     if (activePhone) refreshThread();
   }
 
