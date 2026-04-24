@@ -83,6 +83,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   const from  = req.body.From;
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
+  const numMedia = parseInt(req.body.NumMedia || '0', 10);
 
   console.log(`📨 [Demo] SMS from ${from}: ${body}`);
 
@@ -108,6 +109,20 @@ app.post('/demo/sms-incoming', async (req, res) => {
   }
 
   try {
+    // MMS: customer sent image directly — guide them to the upload page
+    if (numMedia > 0) {
+      const { createQuoteRequest } = require('../db');
+      const quoteId = require('crypto').randomBytes(8).toString('hex');
+      createQuoteRequest(quoteId, from);
+      const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+      const link = `${baseUrl}/quote/${quoteId}`;
+      const mmsReply = `To get you an accurate quote I'll need to see the photo properly — could you upload it here: ${link}. Takes 30 seconds!`;
+      addMessage(from, 'assistant', mmsReply);
+      twiml.message(mmsReply);
+      res.type('text/xml');
+      return res.send(twiml.toString());
+    }
+
     const history = getConversation(from);
     const rawReply = await getDemoReply(from, history);
     const reply = cleanResponse(cleanReply(rawReply));
