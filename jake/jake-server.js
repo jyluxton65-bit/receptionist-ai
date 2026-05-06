@@ -31,7 +31,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI,
     );
-    auth.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
+    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
 
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -62,7 +62,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
     };
 
     const resp = await calendar.events.insert({
-      calendarId: process.env.JAKE_GOOGLE_CALENDAR_ID || 'primary',
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
       resource: event,
     });
 
