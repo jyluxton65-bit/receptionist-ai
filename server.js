@@ -263,4 +263,27 @@ app.use('/dashboard', dashboardRoutes);
 app.get('/', (req, res) => res.json({ status: 'running', business: process.env.BUSINESS_NAME }));
 app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
+
+// POST /call-missed — Twilio fires this when an inbound call goes unanswered
+app.post('/call-missed', async (req, res) => {
+  const caller = req.body.From || req.body.Caller;
+  if (!caller) return res.sendStatus(200);
+
+  const msg = `Hi, sorry I missed your call — I'm out on a job at the moment! What work did you need doing? I can get you a price and book you in 😊`;
+
+  try {
+    await twilioClient.messages.create({
+      body: msg,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: caller,
+    });
+    addMessage(caller, 'assistant', msg);
+    console.log(`📞 Missed call SMS sent to ${caller}`);
+  } catch (e) {
+    console.error('Missed call SMS error:', e.message);
+  }
+
+  res.sendStatus(200);
+});
+
 module.exports = app;
