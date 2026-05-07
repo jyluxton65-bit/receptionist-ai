@@ -33,8 +33,8 @@ const {
   isPaused,
   setPaused,
 } = require('./demo-db');
-const { getDemoReply, parseBooking, cleanReply, cleanResponse, checkShouldBook } = require('./demo-ai');
-const { bookEvent } = require('../calendar');
+const { getDemoReply, parseBooking, cleanReply, cleanResponse, checkShouldBook, buildDemoSystemPrompt } = require('./demo-ai');
+const { bookEvent, getAvailableSlots } = require('../calendar');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -83,8 +83,6 @@ app.post('/demo/sms-incoming', async (req, res) => {
   const from  = req.body.From;
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
-  const numMedia = parseInt(req.body.NumMedia || '0', 10);
-
   console.log(`📨 [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
@@ -109,31 +107,70 @@ app.post('/demo/sms-incoming', async (req, res) => {
   }
 
   try {
-    // MMS: customer sent image directly — guide them to the upload page
-    if (numMedia > 0) {
+    // Build dynamic system prompt with current UK time and real calendar slots
+    const ukDateTime = new Date().toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    let availableSlots = [];
+    try {
+      availableSlots = await getAvailableSlots();
+      console.log(`📅 [Demo] Loaded ${availableSlots.length} available slot(s)`);
+    } catch (slotErr) {
+      console.warn(`⚠️ [Demo] Could not load calendar slots: ${slotErr.message}`);
+    }
+    const systemPrompt = buildDemoSystemPrompt(ukDateTime, availableSlots);
+
+        const history = getConversation(from);
+    const rawReply = await getDemoReply(from, history, systemPrompt);
+    const reply = cleanResponse(cleanReply(rawReply));
+
+    // If AI requested a photo, send upload link as a separate outbound SMS
+    if (rawReply.includes('##PHOTO_REQUEST##')) {
       const { createQuoteRequest } = require('../db');
-      const quoteId = require('crypto').randomBytes(8).toString('hex');
+      const crypto = require('crypto');
+      const quoteId = crypto.randomBytes(8).toString('hex');
       createQuoteRequest(quoteId, from);
       const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
-      const link = `${baseUrl}/quote/${quoteId}`;
-      const mmsReply = `To get you an accurate quote I'll need to see the photo properly — could you upload it here: ${link}. Takes 30 seconds!`;
-      addMessage(from, 'assistant', mmsReply);
-      twiml.message(mmsReply);
-      res.type('text/xml');
-      return res.send(twiml.toString());
+      const photoLink = `${baseUrl}/quote/${quoteId}`;
+      console.log(`📸 [Demo] Sending photo upload link to ${from}: ${photoLink}`);
+      try {
+        await twilioClient.messages.create({
+          body: `Here's a quick link to upload a photo — takes 30 seconds: ${photoLink}`,
+          from: DEMO_FROM,
+          to: from,
+        });
+      } catch (photoErr) {
+        console.error(`❌ [Demo] Photo link SMS failed: ${photoErr.message}`);
+      }
     }
 
-    const history = getConversation(from);
-    const rawReply = await getDemoReply(from, history);
-    const reply = cleanResponse(cleanReply(rawReply));
     addMessage(from, 'assistant', reply);
+    // Primary: detect booking from ##BOOK:...## tag (most reliable)
+    const bookingData = parseBooking(rawReply);
+    if (bookingData) {
+      console.log(`🗓️ [Demo] ##BOOK## tag: ${JSON.stringify(bookingData)}`);
+      console.log(`📅 [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
+      bookEvent({ ...bookingData, callerNumber: from })
+        .then((evt) => console.log(`✅ [Demo] Event booked for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
+        .catch((calErr) => console.error(`❌ [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
+    }
+
+    // Backup: semantic check for confirmed bookings without tag
     checkShouldBook(getConversation(from)).then(result => {
-      if (result.shouldBook) {
+      if (result.shouldBook && !bookingData) {
+        console.log(`🗓️ [Demo] checkShouldBook result: ${JSON.stringify(result)}`);
+        console.log(`📅 [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
         bookEvent({ date: result.date, time: result.time, job: result.jobType, postcode: result.postcode, callerNumber: from })
-          .then(() => console.log('✅ [Demo] Calendar event booked for ' + from))
-          .catch(err => console.error('❌ [Demo] Calendar booking failed:', err.message));
+          .then((evt) => console.log(`✅ [Demo] Event booked (via check) for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
+          .catch((calErr) => console.error(`❌ [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
       }
-    }).catch(() => {});
+    }).catch((err) => console.error(`❌ [Demo] Booking check error: ${err.message}`));
     twiml.message(reply);
     console.log('✅ [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
