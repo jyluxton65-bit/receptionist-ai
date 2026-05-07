@@ -7,10 +7,20 @@ const getCalendarClient = () => {
     process.env.GOOGLE_REDIRECT_URI
   );
 
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  // Use stored tokens from DB if available (set via /auth/google), fall back to env var
+  let refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  try {
+    const { getSetting } = require('./db');
+    const stored = getSetting('google_tokens');
+    if (stored) {
+      const t = JSON.parse(stored);
+      if (t.refresh_token) refreshToken = t.refresh_token;
+    }
+  } catch (_) { /* fall back to env var */ }
+
+  auth.setCredentials({ refresh_token: refreshToken });
   return google.calendar({ version: 'v3', auth });
 };
-
 // Book an event into Google Calendar
 const bookEvent = async ({ date, time, job, postcode, callerNumber }) => {
   const calendar = getCalendarClient();
