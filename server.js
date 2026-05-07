@@ -211,7 +211,14 @@ app.get('/auth/callback', async (req, res) => {
   const { setSetting } = require('./db');
   setSetting('google_tokens', JSON.stringify(tokens));
   console.log('â Google Calendar connected');
-  res.redirect('/dashboard?success=calendar_connected');
+  console.log('\uD83D\uDD11 [OAuth] New refresh_token:', tokens.refresh_token || '(none returned)');
+  res.send(`<html><body style="font-family:sans-serif;padding:40px;max-width:800px">
+    <h2>✅ Google Calendar Connected</h2>
+    <p>Copy this value into Railway as <strong>GOOGLE_REFRESH_TOKEN</strong>:</p>
+    <textarea rows="3" style="width:100%;font-family:monospace;font-size:13px;padding:10px" onclick="this.select()">${tokens.refresh_token || '(no refresh_token returned — token may still be valid in DB)'}</textarea>
+    <p style="color:#666;font-size:13px">The token has also been saved to the database automatically.</p>
+    <a href="/dashboard">Go to Dashboard →</a>
+  </body></html>`);;
 });
 
 // âââââââââââââââââââââââââââââââââââââââââââââ
