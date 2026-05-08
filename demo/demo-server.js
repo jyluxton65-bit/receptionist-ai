@@ -161,6 +161,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
     const reply = cleanResponse(cleanReply(rawReply));
 
     // If AI requested a photo, send upload link as a separate outbound SMS
+    let sentPhotoLink = false;
     if (rawReply.includes('##PHOTO_REQUEST##')) {
       if (!photoLinkSent.has(from)) {
         const { createQuoteRequest } = require('../db');
@@ -170,13 +171,14 @@ app.post('/demo/sms-incoming', async (req, res) => {
         const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
         const photoLink = `${baseUrl}/quote/${quoteId}`;
         console.log(` [Demo] Sending photo upload link to ${from}: ${photoLink}`);
+        photoLinkSent.add(from);
+        sentPhotoLink = true;
         try {
           await twilioClient.messages.create({
             body: `Here's a quick link to upload a photo — takes 30 seconds: ${photoLink}`,
             from: DEMO_FROM,
             to: from,
           });
-          photoLinkSent.add(from);
         } catch (photoErr) {
           console.error(`❌ [Demo] Photo link SMS failed: ${photoErr.message}`);
         }
@@ -206,7 +208,9 @@ app.post('/demo/sms-incoming', async (req, res) => {
           .catch((calErr) => console.error(`â [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
       }
     }).catch((err) => console.error(`â [Demo] Booking check error: ${err.message}`));
-    twiml.message(reply);
+    if (!sentPhotoLink) {
+      twiml.message(reply);
+    }
     console.log('â [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
     console.error('â [Demo] Error:', err.message);
