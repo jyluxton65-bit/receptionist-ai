@@ -1,8 +1,8 @@
 const { format } = require('date-fns');
-const { utcToZonedTime } = require('date-fns-tz');
+const { toZonedTime } = require('date-fns-tz');
 
 function getCurrentContext() {
-  const now = utcToZonedTime(new Date(), 'Europe/London');
+  const now = toZonedTime(new Date(), 'Europe/London');
   const day = format(now, 'EEEE');
   const date = format(now, 'd MMMM yyyy');
   const time = format(now, 'h:mma').toLowerCase();
