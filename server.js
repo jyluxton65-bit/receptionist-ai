@@ -35,7 +35,7 @@ app.post('/call-missed', async (req, res) => {
   console.log(`ð Missed call from ${callerNumber}`);
   const openingText = `Hi, it's ${process.env.BUSINESS_NAME} here. Sorry I missed your call, I'm out on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
   try {
-    await twilioClient.messages.create({ body: openingText, from: process.env.TWILIO_PHONE_NUMBER, to: callerNumber });
+    await twilioClient.messages.create({ body: openingText, from: process.env.DEMO_PHONE_NUMBER, to: callerNumber });
     addMessage(callerNumber, 'assistant', openingText);
     console.log(`â Sent opening SMS to ${callerNumber}`);
   } catch (err) {
@@ -181,7 +181,7 @@ app.post('/quote/:id/submit', async (req, res) => {
 
     await twilioClient.messages.create({
       body: assessment,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: process.env.DEMO_PHONE_NUMBER,
       to: quote.phone,
     });
 
@@ -247,7 +247,7 @@ app.post('/api/quote/create', async (req, res) => {
   try {
     await twilioClient.messages.create({
       body: `To help give you an accurate quote I'd love to see a photo of the tree. Here is a quick upload link: ${link}`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: process.env.DEMO_PHONE_NUMBER,
       to: phone,
     });
     addMessage(phone, 'assistant', `[Photo link sent] ${link}`);
@@ -281,7 +281,7 @@ app.post('/call-missed', async (req, res) => {
   try {
     await twilioClient.messages.create({
       body: msg,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: process.env.DEMO_PHONE_NUMBER,
       to: caller,
     });
     addMessage(caller, 'assistant', msg);
