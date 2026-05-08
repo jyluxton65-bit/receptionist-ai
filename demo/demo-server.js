@@ -2,7 +2,7 @@
  * demo-server.js
  *
  * Demo receptionist pre-configured for Joe's Tree Services, Didsbury.
- * Used during sales demos — prospects can text this number live during a call.
+ * Used during sales demos â prospects can text this number live during a call.
  *
  * Twilio webhook URLs to set on your demo number:
  *   Missed call (Voice):  POST https://YOUR-URL/demo/call-missed
@@ -49,8 +49,10 @@ const twilioClient = twilio(
 );
 
 const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
+// Tracks phones that have already received a photo upload link this session
+const photoLinkSent = new Set();
 
-// ── Missed call → instant text back ──────────────────────────────────────────
+// ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/call-missed', async (req, res) => {
   const callerNumber = req.body.From;
   const twiml        = new twilio.twiml.VoiceResponse();
@@ -64,9 +66,9 @@ app.post('/demo/call-missed', async (req, res) => {
       to: callerNumber,
     });
     addMessage(callerNumber, 'assistant', opener);
-    console.log(`✅ [Demo] Sent opener to ${callerNumber}`);
+    console.log(`â [Demo] Sent opener to ${callerNumber}`);
   } catch (err) {
-    console.error('❌ [Demo] SMS failed:', err.message);
+    console.error('â [Demo] SMS failed:', err.message);
   }
 
   twiml.say({ voice: 'alice', language: 'en-GB' },
@@ -78,16 +80,17 @@ app.post('/demo/call-missed', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// ── Inbound SMS ───────────────────────────────────────────────────────────────
+// ââ Inbound SMS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/sms-incoming', async (req, res) => {
   const from  = req.body.From;
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
-  console.log(`📨 [Demo] SMS from ${from}: ${body}`);
+  console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
   if (body.toLowerCase() === 'reset demo') {
     clearConversation(from);
+    photoLinkSent.delete(from);
     twiml.message("Demo reset. Text anything to start a fresh conversation.");
     res.type('text/xml');
     return res.send(twiml.toString());
@@ -96,12 +99,12 @@ app.post('/demo/sms-incoming', async (req, res) => {
   // Always store the incoming message in history so context is preserved
   addMessage(from, 'user', body);
 
-  // PAUSED: bot stays silent — returns empty TwiML.
+  // PAUSED: bot stays silent â returns empty TwiML.
   // If Twilio SMS forwarding is configured on this number, the arborist's
   // personal phone receives the message as a normal text and can reply directly.
   // History is maintained so the bot resumes seamlessly on RESUME.
   if (isPaused()) {
-    console.log(`⏸️  [Demo] PAUSED — storing message from ${from} but not replying`);
+    console.log(`â¸ï¸  [Demo] PAUSED â storing message from ${from} but not replying`);
     res.type('text/xml');
     return res.send(twiml.toString()); // empty TwiML = no bot reply
   }
@@ -120,9 +123,9 @@ app.post('/demo/sms-incoming', async (req, res) => {
     let availableSlots = [];
     try {
       availableSlots = await getAvailableSlots();
-      console.log(`📅 [Demo] Loaded ${availableSlots.length} available slot(s)`);
+      console.log(`ð [Demo] Loaded ${availableSlots.length} available slot(s)`);
     } catch (slotErr) {
-      console.warn(`⚠️ [Demo] Could not load calendar slots: ${slotErr.message}`);
+      console.warn(`â ï¸ [Demo] Could not load calendar slots: ${slotErr.message}`);
     }
     const systemPrompt = buildDemoSystemPrompt(ukDateTime, availableSlots);
 
@@ -132,21 +135,26 @@ app.post('/demo/sms-incoming', async (req, res) => {
 
     // If AI requested a photo, send upload link as a separate outbound SMS
     if (rawReply.includes('##PHOTO_REQUEST##')) {
-      const { createQuoteRequest } = require('../db');
-      const crypto = require('crypto');
-      const quoteId = crypto.randomBytes(8).toString('hex');
-      createQuoteRequest(quoteId, from);
-      const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
-      const photoLink = `${baseUrl}/quote/${quoteId}`;
-      console.log(`📸 [Demo] Sending photo upload link to ${from}: ${photoLink}`);
-      try {
-        await twilioClient.messages.create({
-          body: `Here's a quick link to upload a photo — takes 30 seconds: ${photoLink}`,
-          from: DEMO_FROM,
-          to: from,
-        });
-      } catch (photoErr) {
-        console.error(`❌ [Demo] Photo link SMS failed: ${photoErr.message}`);
+      if (!photoLinkSent.has(from)) {
+        const { createQuoteRequest } = require('../db');
+        const crypto = require('crypto');
+        const quoteId = crypto.randomBytes(8).toString('hex');
+        createQuoteRequest(quoteId, from);
+        const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+        const photoLink = `${baseUrl}/quote/${quoteId}`;
+        console.log(` [Demo] Sending photo upload link to ${from}: ${photoLink}`);
+        try {
+          await twilioClient.messages.create({
+            body: `Here's a quick link to upload a photo — takes 30 seconds: ${photoLink}`,
+            from: DEMO_FROM,
+            to: from,
+          });
+          photoLinkSent.add(from);
+        } catch (photoErr) {
+          console.error(`❌ [Demo] Photo link SMS failed: ${photoErr.message}`);
+        }
+      } else {
+        console.log(` [Demo] Photo link already sent to ${from} — skipping duplicate`);
       }
     }
 
@@ -154,27 +162,27 @@ app.post('/demo/sms-incoming', async (req, res) => {
     // Primary: detect booking from ##BOOK:...## tag (most reliable)
     const bookingData = parseBooking(rawReply);
     if (bookingData) {
-      console.log(`🗓️ [Demo] ##BOOK## tag: ${JSON.stringify(bookingData)}`);
-      console.log(`📅 [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
+      console.log(`ðï¸ [Demo] ##BOOK## tag: ${JSON.stringify(bookingData)}`);
+      console.log(`ð [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
       bookEvent({ ...bookingData, callerNumber: from })
-        .then((evt) => console.log(`✅ [Demo] Event booked for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
-        .catch((calErr) => console.error(`❌ [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
+        .then((evt) => console.log(`â [Demo] Event booked for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
+        .catch((calErr) => console.error(`â [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
     }
 
     // Backup: semantic check for confirmed bookings without tag
     checkShouldBook(getConversation(from)).then(result => {
       if (result.shouldBook && !bookingData) {
-        console.log(`🗓️ [Demo] checkShouldBook result: ${JSON.stringify(result)}`);
-        console.log(`📅 [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
+        console.log(`ðï¸ [Demo] checkShouldBook result: ${JSON.stringify(result)}`);
+        console.log(`ð [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
         bookEvent({ date: result.date, time: result.time, job: result.jobType, postcode: result.postcode, callerNumber: from })
-          .then((evt) => console.log(`✅ [Demo] Event booked (via check) for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
-          .catch((calErr) => console.error(`❌ [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
+          .then((evt) => console.log(`â [Demo] Event booked (via check) for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
+          .catch((calErr) => console.error(`â [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
       }
-    }).catch((err) => console.error(`❌ [Demo] Booking check error: ${err.message}`));
+    }).catch((err) => console.error(`â [Demo] Booking check error: ${err.message}`));
     twiml.message(reply);
-    console.log('✅ [Demo] Replied to ' + from + ': ' + reply);
+    console.log('â [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
-    console.error('❌ [Demo] Error:', err.message);
+    console.error('â [Demo] Error:', err.message);
     twiml.message("Sorry something went wrong, try sending that again!");
   }
 
@@ -182,7 +190,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// ── Dashboard (PWA) ───────────────────────────────────────────────────────────
+// ââ Dashboard (PWA) âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 app.get('/demo/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
@@ -194,13 +202,13 @@ app.get('/demo/status', (req, res) => {
 
 app.post('/demo/pause', (req, res) => {
   setPaused(true);
-  console.log('⏸️  [Demo] Bot PAUSED via dashboard');
+  console.log('â¸ï¸  [Demo] Bot PAUSED via dashboard');
   res.json({ ok: true, paused: true });
 });
 
 app.post('/demo/resume', (req, res) => {
   setPaused(false);
-  console.log('▶️  [Demo] Bot RESUMED via dashboard');
+  console.log('â¶ï¸  [Demo] Bot RESUMED via dashboard');
   res.json({ ok: true, paused: false });
 });
 
@@ -212,7 +220,7 @@ app.get('/demo/conversations/:phone', (req, res) => {
   res.json(getConversation(decodeURIComponent(req.params.phone)));
 });
 
-// Manual send — arborist replies from the dashboard
+// Manual send â arborist replies from the dashboard
 app.post('/demo/send', async (req, res) => {
   const { to, message } = req.body;
   if (!to || !message) return res.status(400).json({ error: 'to and message required' });
@@ -220,15 +228,15 @@ app.post('/demo/send', async (req, res) => {
   try {
     await twilioClient.messages.create({ body: message, from: DEMO_FROM, to });
     addMessage(to, 'assistant', message);
-    console.log(`✅ [Demo] Manual send to ${to}: ${message}`);
+    console.log(`â [Demo] Manual send to ${to}: ${message}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error('❌ [Demo] Send failed:', err.message);
+    console.error('â [Demo] Send failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delay — push today's remaining Google Calendar events back and text customers
+// Delay â push today's remaining Google Calendar events back and text customers
 app.post('/demo/delay', async (req, res) => {
   const { minutes } = req.body;
   if (!minutes || isNaN(minutes) || parseInt(minutes) < 1) {
@@ -281,15 +289,15 @@ app.post('/demo/delay', async (req, res) => {
         const newTimeStr = newStart.toLocaleTimeString('en-GB', {
           hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London',
         });
-        const msg = `Hi, it's Joe. Running about ${minutes} mins behind today — your appointment is now at ${newTimeStr}. Sorry for the inconvenience.`;
+        const msg = `Hi, it's Joe. Running about ${minutes} mins behind today â your appointment is now at ${newTimeStr}. Sorry for the inconvenience.`;
 
         try {
           await twilioClient.messages.create({ body: msg, from: DEMO_FROM, to: phone });
           addMessage(phone, 'assistant', msg);
           affected.push({ phone, newTime: newTimeStr, event: event.summary });
-          console.log(`📅 [Demo] Pushed "${event.summary}" to ${newTimeStr}, texted ${phone}`);
+          console.log(`ð [Demo] Pushed "${event.summary}" to ${newTimeStr}, texted ${phone}`);
         } catch (smsErr) {
-          console.error(`❌ [Demo] SMS to ${phone} failed:`, smsErr.message);
+          console.error(`â [Demo] SMS to ${phone} failed:`, smsErr.message);
           affected.push({ phone, newTime: newTimeStr, event: event.summary, smsError: smsErr.message });
         }
       } else {
@@ -299,12 +307,12 @@ app.post('/demo/delay', async (req, res) => {
 
     res.json({ ok: true, delayed: events.length, minutes: parseInt(minutes), affected });
   } catch (err) {
-    console.error('❌ [Demo] Delay failed:', err.message);
+    console.error('â [Demo] Delay failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/health', (req, res) => res.json({
   ok: true,
   service: 'demo-receptionist',
@@ -314,7 +322,7 @@ app.get('/health', (req, res) => res.json({
 }));
 
 
-// ── Photo Quotes API ────────────────────────────
+// ââ Photo Quotes API ââââââââââââââââââââââââââââ
 app.get('/demo/api/photo-quotes', (req, res) => {
   const { getRecentPhotoQuotes } = require('../db');
   res.json(getRecentPhotoQuotes(50));
