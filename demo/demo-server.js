@@ -85,6 +85,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   const from  = req.body.From;
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
+  const numMedia = parseInt(req.body.NumMedia || '0');
   console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
@@ -97,6 +98,32 @@ app.post('/demo/sms-incoming', async (req, res) => {
   }
 
   // Always store the incoming message in history so context is preserved
+
+  // If customer tried to send photo via MMS (UK numbers do not support MMS)
+  if (numMedia > 0) {
+    console.log(` [Demo] NumMedia=${numMedia} from ${from} — UK MMS not supported, sending upload link`);
+    if (!photoLinkSent.has(from)) {
+      const { createQuoteRequest } = require('../db');
+      const crypto = require('crypto');
+      const quoteId = crypto.randomBytes(8).toString('hex');
+      createQuoteRequest(quoteId, from);
+      const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+      const photoLink = `${baseUrl}/quote/${quoteId}`;
+      const linkMsg = `To get you an accurate quote, upload your photo here — takes 30 seconds: ${photoLink}`;
+      try {
+        await twilioClient.messages.create({ body: linkMsg, from: DEMO_FROM, to: from });
+        photoLinkSent.add(from);
+        addMessage(from, 'assistant', linkMsg);
+        console.log(` [Demo] Photo upload link sent to ${from}`);
+      } catch (smsErr) {
+        console.error(`❌ [Demo] Photo link SMS failed: ${smsErr.message}`);
+      }
+    } else {
+      console.log(` [Demo] NumMedia>0 but link already sent to ${from} — skipping`);
+    }
+    res.type('text/xml');
+    return res.send(twiml.toString());
+  }
   addMessage(from, 'user', body);
 
   // PAUSED: bot stays silent â returns empty TwiML.
