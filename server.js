@@ -186,7 +186,8 @@ app.post('/quote/:id/submit', async (req, res) => {
     });
 
     fulfillQuoteRequest(id, { imageData: b64, imageMime: mimeType, assessment, quoteSent: assessment });
-    addMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
+    addMessage(quote.phone, 'user', '[Customer uploaded a photo via the web link for a quote]');
+  addMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
 
     console.log(`â Photo quote sent to ${quote.phone}`);
     res.json({ ok: true, assessment });
