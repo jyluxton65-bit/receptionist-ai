@@ -109,16 +109,27 @@ app.post('/demo/sms-incoming', async (req, res) => {
   }
 
   try {
-    const history  = getConversation(from);
-    const rawReply = await getDemoReply(from, history);
-    const booking  = parseBooking(rawReply);
-    const reply    = cleanReply(rawReply);
+    const numMedia   = parseInt(req.body.NumMedia || '0', 10);
+    const history    = getConversation(from);
+    const rawReply   = await getDemoReply(from, history);
+    const booking    = parseBooking(rawReply);
+    let reply        = cleanReply(rawReply);
+
+    // If the customer mentioned a photo but none came through, or the bot says
+    // it can't see it, inject the upload link alongside follow-up questions.
+    const mentionedPhoto = /\b(photo|pic|picture|image|snap)\b/i.test(body);
+    const botCantSee     = /can.t see|not (?:coming|getting) through|didn.t (?:come|get) through|no photo|no image/i.test(reply);
+
+    if ((mentionedPhoto && numMedia === 0) || botCantSee) {
+      const baseUrl    = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+      const uploadLink = baseUrl + '/quote-upload.html?phone=' + encodeURIComponent(from);
+      reply = 'Still not getting the photo through \u2014 happens sometimes with texts. Here\u2019s a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
+    }
 
     addMessage(from, 'assistant', reply);
 
     if (booking) {
       console.log(`📅 [Demo] Booking detected: ${JSON.stringify(booking)}`);
-      // In a real deployment this would call bookEvent() — demo just logs it
     }
 
     twiml.message(reply);
