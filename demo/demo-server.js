@@ -65,11 +65,11 @@ app.post('/demo/call-missed', (req, res) => {
 
   // 📱 Send SMS async AFTER TwiML is already on the wire
   const opener = `Hi, it's Joe from Joe's Tree Services. Sorry I missed your call, I'm on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
+    // Initialise session sync so reply texts always find a valid session
+  addMessage(callerNumber, 'assistant', opener);
+
   twilioClient.messages.create({ body: opener, from: DEMO_FROM, to: callerNumber })
-    .then(() => {
-      addMessage(callerNumber, 'assistant', opener);
-      console.log(`✅ [Demo] Sent opener to ${callerNumber}`);
-    })
+    .then(() => console.log(`✅ [Demo] Sent opener to ${callerNumber}`))
     .catch(err => console.error('❌ [Demo] SMS failed:', err.message));
 });
 
