@@ -162,6 +162,7 @@ app.post('/demo/sms-incoming', (req, res) => {
     } catch (_kwErr) {
       console.error('❌ [Demo] Keyword photo link error:', _kwErr.message);
     }
+  return;
   }
 
   // PAUSED: bot stays silent â returns empty TwiML.
@@ -255,7 +256,23 @@ app.post('/demo/sms-incoming', (req, res) => {
     console.log('â [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
     console.error('â [Demo] Error:', err.message);
-    await twilioClient.messages.create({ body: 'Sorry something went wrong, try sending that again!', from: DEMO_FROM, to: from }).catch(() => {});
+    if (numMedia > 0 || mediaUrl0) {
+      try {
+        const { createQuoteRequest: _mqr } = require('../db');
+        const _mmsId = makeSignedQuoteId(from);
+        _mqr(_mmsId, from);
+        const _mmsBase = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+        const _mmsLink = `${_mmsBase}/quote/${_mmsId}`;
+        const _mmsMsg = "No worries, here's a quick link to upload a photo - takes 30 seconds: " + _mmsLink + ". Just send a photo of the tree and I'll get you a rough price straight away.";
+        await twilioClient.messages.create({ body: _mmsMsg, from: DEMO_FROM, to: from });
+        photoLinkSent.add(from);
+        console.log('[Demo] Photo link sent after MMS error to ' + from);
+      } catch (_mmsErr) {
+        console.error('[Demo] MMS fallback error:', _mmsErr.message);
+      }
+    } else {
+      await twilioClient.messages.create({ body: 'Sorry something went wrong, try sending that again!', from: DEMO_FROM, to: from }).catch(() => {});
+    }
   }
 
   }).catch(err => console.error('[Demo] Queue error for', from, ':', err));
