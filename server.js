@@ -1,15 +1,12 @@
 require('dotenv').config();
+
 const express = require('express');
 const twilio = require('twilio');
 const path = require('path');
-const crypto = require('crypto');
 const cookieSession = require('cookie-session');
-const {
-  getConversation, addMessage, clearConversation, getSetting,
-  createQuoteRequest, getQuoteRequest, fulfillQuoteRequest,
-} = require('./db');
-const { addMessage: addDemoMessage } = require('./demo/demo-db');
-const { getAIReply, parseBooking, cleanReply, cleanResponse, assessImage, assessImageData } = require('./ai');
+
+const { getConversation, addMessage, clearConversation, getSetting } = require('./db');
+const { getAIReply, parseBooking, cleanReply, assessImage } = require('./ai');
 const { bookEvent } = require('./calendar');
 const { calculateCalloutFee, extractPostcode } = require('./postcode');
 
@@ -23,49 +20,66 @@ app.use(cookieSession({
   httpOnly: true,
   sameSite: 'lax',
 }));
+
 app.use(express.urlencoded({ extended: false }));
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
 // 1. MISSED CALL WEBHOOK
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// Twilio calls this when a call goes unanswered.
+// ─────────────────────────────────────────────
 app.post('/call-missed', async (req, res) => {
   const callerNumber = req.body.From;
   const twiml = new twilio.twiml.VoiceResponse();
-  console.log(`ð Missed call from ${callerNumber}`);
+
+  console.log(`📞 Missed call from ${callerNumber}`);
+
   const openingText = `Hi, it's ${process.env.BUSINESS_NAME} here. Sorry I missed your call, I'm out on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
+
   try {
-    await twilioClient.messages.create({ body: openingText, from: process.env.DEMO_PHONE_NUMBER, to: callerNumber });
+    await twilioClient.messages.create({
+      body: openingText,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: callerNumber,
+    });
     addMessage(callerNumber, 'assistant', openingText);
-    console.log(`â Sent opening SMS to ${callerNumber}`);
+    console.log(`✅ Sent opening SMS to ${callerNumber}`);
   } catch (err) {
-    console.error(`â Failed to send SMS to ${callerNumber}:`, err.message);
+    console.error(`❌ Failed to send SMS to ${callerNumber} - full error:`, err);
+    console.error('❌ Stack:', err.stack);
   }
-  twiml.say({ voice: 'alice', language: 'en-GB' }, `Thanks for calling ${process.env.BUSINESS_NAME}. We're out on a job right now but we've just sent you a text. We'll be in touch very soon.`);
+
+  twiml.say({ voice: 'alice', language: 'en-GB' },
+    `Thanks for calling ${process.env.BUSINESS_NAME}. We're out on a job right now but we've just sent you a text. We'll be in touch very soon.`
+  );
   twiml.hangup();
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
 // 2. INCOMING SMS WEBHOOK
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
 app.post('/sms-incoming', async (req, res) => {
   const callerNumber = req.body.From;
   const incomingMessage = req.body.Body?.trim() || '';
   const numMedia = parseInt(req.body.NumMedia || '0', 10);
   const mediaUrl = req.body.MediaUrl0;
   const mediaType = req.body.MediaContentType0 || 'image/jpeg';
-  const twiml = new twilio.twiml.MessagingResponse();
-  console.log(`ð¬ SMS from ${callerNumber}: ${incomingMessage || '(media only)'}`);
 
+  const twiml = new twilio.twiml.MessagingResponse();
+
+  console.log(`💬 SMS from ${callerNumber}: ${incomingMessage || '(media only)'}`);
+
+  // Bot enabled check
   if (getSetting('bot_enabled') === 'false') {
     addMessage(callerNumber, 'user', incomingMessage, mediaUrl);
     res.type('text/xml');
     return res.send(twiml.toString());
   }
 
+  // Opt-out
   if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(incomingMessage.toLowerCase())) {
     clearConversation(callerNumber);
     twiml.message("No problem, you won't hear from us again. Take care!");
@@ -73,61 +87,69 @@ app.post('/sms-incoming', async (req, res) => {
     return res.send(twiml.toString());
   }
 
-  addMessage(callerNumber, 'user', incomingMessage, mediaUrl);
-
+  // ── Store incoming message ─────────────────────────────────────────────────
   try {
-    let reply;
+    addMessage(callerNumber, 'user', incomingMessage, mediaUrl);
+  } catch (dbErr) {
+    console.error('❌ [SMS] Failed to store incoming message - full error:', dbErr);
+    console.error('❌ [SMS] Stack:', dbErr.stack);
+  }
 
-    if (numMedia > 0 && mediaUrl) {
-      // Customer sent an image directly — generate a photo quote link
-      const quoteId = crypto.randomBytes(8).toString('hex');
-      createQuoteRequest(quoteId, callerNumber);
-      const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
-      const link = `${baseUrl}/quote/${quoteId}`;
-      reply = `To get you an accurate quote I'll need to see the photo properly — could you upload it here: ${link}. Takes 30 seconds!`;
-    } else {
-      const postcode = extractPostcode(incomingMessage);
-      let postcodeNote = '';
-      if (postcode) {
-        try {
-          const callout = await calculateCalloutFee(postcode);
-          if (!callout.withinRange) {
-            addMessage(callerNumber, 'assistant', callout.message);
-            twiml.message(callout.message);
-            res.type('text/xml');
-            return res.send(twiml.toString());
-          }
-          postcodeNote = callout.fee > 0
-            ? `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, callout fee Â£${callout.fee.toFixed(2)}]`
-            : `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, within free zone]`;
-        } catch (pcErr) {
-          console.warn('Postcode lookup failed:', pcErr.message);
+  let reply;
+
+  // ── MMS photo handling ─────────────────────────────────────────────────────
+  if (numMedia > 0 && mediaUrl) {
+    console.log(`🖼️  MMS received: ${mediaUrl}`);
+    try {
+      reply = await assessImage(mediaUrl, mediaType, incomingMessage);
+    } catch (imgErr) {
+      console.error('❌ [SMS] Image assessment failed - full error:', imgErr);
+      console.error('❌ [SMS] Stack:', imgErr.stack);
+      reply = "Thanks for the photo! I've passed it to the team who'll be in touch with a quote shortly.";
+    }
+
+  } else {
+    // ── Postcode detection ───────────────────────────────────────────────────
+    const postcode = extractPostcode(incomingMessage);
+    let postcodeNote = '';
+
+    if (postcode) {
+      try {
+        const callout = await calculateCalloutFee(postcode);
+        if (!callout.withinRange) {
+          addMessage(callerNumber, 'assistant', callout.message);
+          twiml.message(callout.message);
+          res.type('text/xml');
+          return res.send(twiml.toString());
         }
+        postcodeNote = callout.fee > 0
+          ? `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, callout fee £${callout.fee.toFixed(2)}]`
+          : `\n\n[Note: ${postcode} is ${callout.distanceMiles} miles away, within free zone]`;
+      } catch (pcErr) {
+        console.error('❌ [SMS] Postcode lookup failed - full error:', pcErr);
       }
+    }
 
+    // ── Get AI reply ─────────────────────────────────────────────────────────
+    try {
       const history = getConversation(callerNumber);
-      const messageForAI = postcodeNote ? `${incomingMessage}${postcodeNote}` : incomingMessage;
-      if (postcodeNote) history[history.length - 1].content = messageForAI;
+      const messageForAI = postcodeNote
+        ? `${incomingMessage}${postcodeNote}`
+        : incomingMessage;
+
+      if (postcodeNote) {
+        history[history.length - 1].content = messageForAI;
+      }
 
       const rawReply = await getAIReply(callerNumber, history);
       const bookingData = parseBooking(rawReply);
-      const needsPhoto = rawReply.includes('##PHOTO_REQUEST##');
-      reply = cleanResponse(cleanReply(rawReply));
+      reply = cleanReply(rawReply);
 
-      // Auto-generate photo link if bot requested it
-      if (needsPhoto) {
-        const qid = crypto.randomBytes(4).toString('hex');
-        createQuoteRequest(qid, callerNumber);
-        const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-        const link = `${appUrl}/quote/${qid}`;
-        reply = reply + ' Here is a quick link to upload a photo: ' + link;
-        console.log(`ð· Photo link created for ${callerNumber}: ${link}`);
-      }
-
+      // ── Calendar booking ───────────────────────────────────────────────────
       if (bookingData) {
         try {
           const event = await bookEvent({ ...bookingData, callerNumber });
-          console.log(`ð Booking created for ${callerNumber}: ${bookingData.job} on ${bookingData.date}`);
+          console.log(`📅 Booking created for ${callerNumber}: ${bookingData.job} on ${bookingData.date}`);
           const { saveAppointment } = require('./db');
           saveAppointment({
             phone: callerNumber,
@@ -136,129 +158,69 @@ app.post('/sms-incoming', async (req, res) => {
             googleEventId: event?.id,
           });
         } catch (calErr) {
-          console.error('â Calendar booking failed:', calErr.message);
+          console.error('❌ [SMS] Calendar booking failed - full error:', calErr);
+          console.error('❌ [SMS] Stack:', calErr.stack);
         }
       }
+    } catch (aiErr) {
+      console.error('❌ [SMS] AI reply failed - full error:', aiErr);
+      console.error('❌ [SMS] Stack:', aiErr.stack);
+      reply = `Sorry, just give ${process.env.BUSINESS_OWNER_NAME} a ring back when you get a chance!`;
     }
+  }
 
-    addMessage(callerNumber, 'assistant', reply);
-    twiml.message(reply);
-    console.log(`â Replied to ${callerNumber}: ${reply}`);
-  } catch (err) {
-    console.error('â SMS handler error:', err.message);
-    twiml.message("Sorry something went wrong, try sending that again!");
+  // ── Store and send reply ───────────────────────────────────────────────────
+  try {
+    if (reply) {
+      addMessage(callerNumber, 'assistant', reply);
+      twiml.message(reply);
+      console.log(`✅ Replied to ${callerNumber}: ${reply}`);
+    }
+  } catch (sendErr) {
+    console.error('❌ [SMS] Failed to store/send reply - full error:', sendErr);
+    console.error('❌ [SMS] Stack:', sendErr.stack);
+    twiml.message(`Sorry something went wrong, try sending that again!`);
   }
 
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 3. PHOTO QUOTE UPLOAD â serve page
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// Verifies a self-contained signed quote ID (generated by makeSignedQuoteId in demo-server.js).
-// Falls back to this if the SQLite record is missing (e.g. after a Railway restart).
-function parseSignedQuoteId(id) {
-  try {
-    if (!id || id.length < 20) return null;
-    const nonce = id.slice(0, 8);
-    const mac = id.slice(8, 16);
-    const phoneB64 = id.slice(16);
-    const phone = Buffer.from(phoneB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-    if (!phone || phone.length < 7 || phone.length > 20) return null;
-    const secret = process.env.SESSION_SECRET || 'fallback-secret';
-    const expected = crypto.createHmac('sha256', secret).update(nonce + ':' + phone).digest('hex').slice(0, 8);
-    if (mac !== expected) return null;
-    return { phone };
-  } catch (e) { return null; }
-}
-
-app.get('/quote/:id', (req, res) => {
-  let quote = getQuoteRequest(req.params.id);
-  if (!quote) {
-    const parsed = parseSignedQuoteId(req.params.id);
-    if (parsed) {
-      createQuoteRequest(req.params.id, parsed.phone);
-      quote = getQuoteRequest(req.params.id);
-    }
-  }
-  if (!quote) return res.status(404).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link not found</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1a10;color:#d4edd6;text-align:center;padding:24px}</style></head><body><div><div style="font-size:48px">ð³</div><h2 style="margin:16px 0 8px">Link not found</h2><p style="color:#6b8e6f">This link has expired or doesn't exist.</p></div></body></html>`);
-  if (quote.used) return res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already submitted</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1a10;color:#d4edd6;text-align:center;padding:24px}</style></head><body><div><div style="font-size:48px">â</div><h2 style="margin:16px 0 8px">Already received</h2><p style="color:#6b8e6f">We already have your photo and will be in touch shortly.</p></div></body></html>`);
-  res.sendFile(path.join(__dirname, 'public', 'quote-upload.html'));
-});
-
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 4. PHOTO QUOTE UPLOAD â receive submission
-// âââââââââââââââââââââââââââââââââââââââââââââ
-app.post('/quote/:id/submit', async (req, res) => {
-  const { id } = req.params;
-  let quote = getQuoteRequest(id);
-  if (!quote) {
-    const parsed = parseSignedQuoteId(id);
-    if (parsed) {
-      createQuoteRequest(id, parsed.phone);
-      quote = getQuoteRequest(id);
-    }
-  }
-  if (!quote || quote.used) return res.status(400).json({ error: 'Link expired or not found' });
-
-  const { imageData, mimeType = 'image/jpeg', caption = '' } = req.body;
-  if (!imageData) return res.status(400).json({ error: 'No image data' });
-
-  const b64 = imageData.replace(/^data:image\/[a-z+]+;base64,/, '');
-
-  try {
-    console.log(`ð· Photo received for ${quote.phone}, processing with Claude...`);
-    const assessment = await assessImageData(b64, mimeType, caption);
-
-    await twilioClient.messages.create({
-      body: assessment,
-      from: process.env.DEMO_PHONE_NUMBER,
-      to: quote.phone,
-    });
-
-    fulfillQuoteRequest(id, { imageData: b64, imageMime: mimeType, assessment, quoteSent: assessment });
-    addMessage(quote.phone, 'user', '[Customer uploaded a photo via the web link for a quote]');
-  addMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
-    addDemoMessage(quote.phone, 'user', '[Customer uploaded a photo via the web link for a quote]');
-    addDemoMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
-
-    console.log(`â Photo quote sent to ${quote.phone}`);
-    res.json({ ok: true, assessment });
-  } catch (err) {
-    console.error('â Photo quote error:', err.message);
-    res.status(500).json({ error: 'Processing failed. Please try again.' });
-  }
-});
-
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 5. GOOGLE CALENDAR AUTH
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
+// 3. GOOGLE CALENDAR AUTH (one-time setup)
+// ─────────────────────────────────────────────
 const { google } = require('googleapis');
+
 app.get('/auth/google', (req, res) => {
-  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
-  const url = auth.generateAuthUrl({ access_type: 'offline', scope: ['https://www.googleapis.com/auth/calendar'], prompt: 'consent' });
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  const url = auth.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/calendar'],
+    prompt: 'consent',
+  });
   res.redirect(url);
 });
+
 app.get('/auth/callback', async (req, res) => {
-  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
   const { tokens } = await auth.getToken(req.query.code);
   const { setSetting } = require('./db');
   setSetting('google_tokens', JSON.stringify(tokens));
-  console.log('â Google Calendar connected');
-  console.log('\uD83D\uDD11 [OAuth] New refresh_token:', tokens.refresh_token || '(none returned)');
-  res.send(`<html><body style="font-family:sans-serif;padding:40px;max-width:800px">
-    <h2>✅ Google Calendar Connected</h2>
-    <p>Copy this value into Railway as <strong>GOOGLE_REFRESH_TOKEN</strong>:</p>
-    <textarea rows="3" style="width:100%;font-family:monospace;font-size:13px;padding:10px" onclick="this.select()">${tokens.refresh_token || '(no refresh_token returned — token may still be valid in DB)'}</textarea>
-    <p style="color:#666;font-size:13px">The token has also been saved to the database automatically.</p>
-    <a href="/dashboard">Go to Dashboard →</a>
-  </body></html>`);;
+  console.log('✅ Google Calendar connected');
+  res.redirect('/dashboard?success=calendar_connected');
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 6. POSTCODE API
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
+// 4. POSTCODE API
+// ─────────────────────────────────────────────
 app.get('/api/postcode/:postcode', async (req, res) => {
   try {
     const result = await calculateCalloutFee(req.params.postcode);
@@ -268,64 +230,37 @@ app.get('/api/postcode/:postcode', async (req, res) => {
   }
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 7. CREATE PHOTO QUOTE LINK (from dashboard)
-// âââââââââââââââââââââââââââââââââââââââââââââ
-app.post('/api/quote/create', async (req, res) => {
-  if (!req.session?.authenticated) return res.status(401).json({ error: 'Unauthorised' });
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ error: 'Phone required' });
-  const id = crypto.randomBytes(4).toString('hex');
-  createQuoteRequest(id, phone);
-  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-  const link = `${appUrl}/quote/${id}`;
-  try {
-    await twilioClient.messages.create({
-      body: `To help give you an accurate quote I'd love to see a photo of the tree. Here is a quick upload link: ${link}`,
-      from: process.env.DEMO_PHONE_NUMBER,
-      to: phone,
-    });
-    addMessage(phone, 'assistant', `[Photo link sent] ${link}`);
-    console.log(`ð· Photo link sent to ${phone}: ${link}`);
-  } catch (smsErr) {
-    console.error('SMS failed:', smsErr.message);
-  }
-  res.json({ ok: true, id, link });
-});
-
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 8. DASHBOARD
-// âââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────
+// 5. DASHBOARD
+// ─────────────────────────────────────────────
 const dashboardRoutes = require('./dashboard');
 app.use('/dashboard', dashboardRoutes);
 
-// âââââââââââââââââââââââââââââââââââââââââââââ
-// 9. HEALTH
-// âââââââââââââââââââââââââââââââââââââââââââââ
-app.get('/', (req, res) => res.json({ status: 'running', business: process.env.BUSINESS_NAME }));
-app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
-
-
-// POST /call-missed — Twilio fires this when an inbound call goes unanswered
-app.post('/call-missed', async (req, res) => {
-  const caller = req.body.From || req.body.Caller;
-  if (!caller) return res.sendStatus(200);
-
-  const msg = `Hi, sorry I missed your call — I'm out on a job at the moment! What work did you need doing? I can get you a price and book you in 😊`;
-
-  try {
-    await twilioClient.messages.create({
-      body: msg,
-      from: process.env.DEMO_PHONE_NUMBER,
-      to: caller,
-    });
-    addMessage(caller, 'assistant', msg);
-    console.log(`📞 Missed call SMS sent to ${caller}`);
-  } catch (e) {
-    console.error('Missed call SMS error:', e.message);
-  }
-
-  res.sendStatus(200);
+// ─────────────────────────────────────────────
+// 6. HEALTH CHECK
+// ─────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({
+    status: 'running',
+    business: process.env.BUSINESS_NAME,
+    endpoints: {
+      missed_call: 'POST /call-missed',
+      incoming_sms: 'POST /sms-incoming',
+      dashboard: 'GET /dashboard',
+      postcode_check: 'GET /api/postcode/:postcode',
+    },
+  });
 });
 
-module.exports = app;
+app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`
+  🌿 ${process.env.BUSINESS_NAME || 'Grafted Services'} AI Receptionist
+  🚀 Server running on port ${PORT}
+  📞 Missed call webhook:  POST /call-missed
+  💬 Incoming SMS webhook: POST /sms-incoming
+  📊 Dashboard:            GET  /dashboard
+  `);
+});
