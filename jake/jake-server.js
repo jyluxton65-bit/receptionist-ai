@@ -188,23 +188,22 @@ app.get('/api/prospects', (req, res) => {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
 
-// ── Testing helpers ──────────────────────────────────────────────────────────
+// ── Testing helpers (browser-friendly GET endpoints) ─────────────────────────
 
-// Reset a conversation by phone so you can test fresh scenarios
-// Usage: POST /jake/reset/+447700900001
-app.post('/reset/:phone', (req, res) => {
+// Reset a conversation — just visit this URL in your browser:
+// https://receptionist-ai-production-1c42.up.railway.app/jake/reset/+447700900001
+app.get('/reset/:phone', (req, res) => {
   const phone = decodeURIComponent(req.params.phone);
   resetConversation(phone);
   console.log(`[Jake] Reset conversation for ${phone}`);
-  res.json({ ok: true, phone, message: 'Conversation cleared — ready for a fresh test' });
+  res.send(`<h2>✅ Reset done</h2><p>Conversation cleared for <b>${phone}</b>. Jake will treat this number as brand new.</p>`);
 });
 
-// Fire Jake's opener at a single number right now (for testing)
-// Usage: POST /jake/text-me  body: { "phone": "+447700900001" }
-app.post('/text-me', async (req, res) => {
-  const phone = (req.body.phone || '').trim();
-  if (!phone) return res.status(400).json({ error: 'phone required' });
-  if (!JAKE_FROM) return res.status(500).json({ error: 'JAKE_PHONE_NUMBER not configured' });
+// Have Jake text you first — just visit this URL in your browser:
+// https://receptionist-ai-production-1c42.up.railway.app/jake/text-me/+447700900001
+app.get('/text-me/:phone', async (req, res) => {
+  const phone = decodeURIComponent(req.params.phone);
+  if (!JAKE_FROM) return res.status(500).send('<h2>❌ JAKE_PHONE_NUMBER not configured</h2>');
   const opener = OPENERS[Math.floor(Math.random() * OPENERS.length)];
   try {
     await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
@@ -212,10 +211,10 @@ app.post('/text-me', async (req, res) => {
     addMessage(phone, 'assistant', opener);
     markSent(phone);
     console.log(`[Jake] text-me sent to ${phone}: ${opener}`);
-    res.json({ ok: true, phone, opener });
+    res.send(`<h2>✅ Message sent!</h2><p>Sent to <b>${phone}</b>:</p><blockquote>${opener}</blockquote>`);
   } catch (err) {
     console.error(`[Jake] text-me error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).send(`<h2>❌ Error</h2><p>${err.message}</p>`);
   }
 });
 
