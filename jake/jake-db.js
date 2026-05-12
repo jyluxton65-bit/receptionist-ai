@@ -82,6 +82,11 @@ function getProspects(status = null) {
   return db.prepare('SELECT * FROM jake_prospects ORDER BY created_at DESC').all();
 }
 
+function resetConversation(phone) {
+  db.prepare('DELETE FROM jake_messages WHERE phone = ?').run(phone);
+  db.prepare('DELETE FROM jake_prospects WHERE phone = ?').run(phone);
+}
+
 module.exports = {
   addMessage,
   getConversation,
@@ -90,4 +95,5 @@ module.exports = {
   markSent,
   markBooked,
   getProspects,
+  resetConversation,
 };
