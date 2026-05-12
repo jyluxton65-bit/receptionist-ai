@@ -184,9 +184,13 @@ const mediaUrl0 = req.body.MediaUrl0;
         console.log(` [Demo] Sending photo upload link to ${from}: ${photoLink}`);
         photoLinkSent.add(from);
         sentPhotoLink = true;
+        const customIntro = rawReply.replace(/##PHOTO_REQUEST##[\s\S]*$/, '').trim();
+        const linkBody = customIntro
+          ? `${customIntro} ${photoLink}`
+          : `Just click the link, take or upload a photo of the tree, and I'll give you a rough price straight away. Takes about 30 seconds: ${photoLink}`;
         try {
           await twilioClient.messages.create({
-            body: `Just click the link, take or upload a photo of the tree, and I'll give you a rough price straight away. Takes about 30 seconds: ${photoLink}`,
+            body: linkBody,
             from: DEMO_FROM,
             to: from,
           });
