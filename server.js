@@ -8,6 +8,7 @@ const {
   getConversation, addMessage, clearConversation, getSetting,
   createQuoteRequest, getQuoteRequest, fulfillQuoteRequest,
 } = require('./db');
+const { addMessage: addDemoMessage } = require('./demo/demo-db');
 const { getAIReply, parseBooking, cleanReply, cleanResponse, assessImage, assessImageData } = require('./ai');
 const { bookEvent } = require('./calendar');
 const { calculateCalloutFee, extractPostcode } = require('./postcode');
@@ -219,6 +220,8 @@ app.post('/quote/:id/submit', async (req, res) => {
     fulfillQuoteRequest(id, { imageData: b64, imageMime: mimeType, assessment, quoteSent: assessment });
     addMessage(quote.phone, 'user', '[Customer uploaded a photo via the web link for a quote]');
   addMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
+    addDemoMessage(quote.phone, 'user', '[Customer uploaded a photo via the web link for a quote]');
+    addDemoMessage(quote.phone, 'assistant', `[Photo quote] ${assessment}`);
 
     console.log(`â Photo quote sent to ${quote.phone}`);
     res.json({ ok: true, assessment });
