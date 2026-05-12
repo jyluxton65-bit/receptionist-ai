@@ -63,6 +63,30 @@ function makeSignedQuoteId(phone) {
 
 const photoLinkSent = new Set();
 const msgQueues = {};
+const calEventIds = {}; // tracks current Google Calendar event ID per phone
+
+async function deleteCalendarEvent(eventId) {
+  const { google } = require('googleapis');
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  let refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  try {
+    const { getSetting } = require('../db');
+    const stored = getSetting('google_tokens');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.refresh_token) refreshToken = parsed.refresh_token;
+    }
+  } catch (_) {}
+  auth.setCredentials({ refresh_token: refreshToken });
+  const cal = google.calendar({ version: 'v3', auth });
+  await cal.events.delete({ calendarId: process.env.GOOGLE_CALENDAR_ID, eventId });
+  console.log('[Demo] Deleted calendar event ' + eventId);
+}
+
 
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/call-missed', async (req, res) => {
@@ -235,19 +259,27 @@ app.post('/demo/sms-incoming', (req, res) => {
     if (bookingData) {
       console.log(`ðï¸ [Demo] ##BOOK## tag: ${JSON.stringify(bookingData)}`);
       console.log(`ð [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
+      if (calEventIds[from]) {
+        await deleteCalendarEvent(calEventIds[from]).catch(e => console.error('[Demo] Delete old event error:', e.message));
+        delete calEventIds[from];
+      }
       bookEvent({ ...bookingData, callerNumber: from })
-        .then((evt) => console.log(`â [Demo] Event booked for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
-        .catch((calErr) => console.error(`â [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
+        .then((evt) => { if (evt?.id) calEventIds[from] = evt.id; console.log('[Demo] Event booked for ' + from + ': ' + (evt?.htmlLink || evt?.id || 'no id')); })
+        .catch((calErr) => console.error('[Demo] bookEvent failed:', calErr.message));
     }
 
     // Backup: semantic check for confirmed bookings without tag
-    checkShouldBook(getConversation(from)).then(result => {
+    checkShouldBook(getConversation(from)).then(async result => {
       if (result.shouldBook && !bookingData) {
         console.log(`ðï¸ [Demo] checkShouldBook result: ${JSON.stringify(result)}`);
         console.log(`ð [Demo] Booking to calendarId: ${process.env.GOOGLE_CALENDAR_ID || '(GOOGLE_CALENDAR_ID not set!)'}`);
+        if (calEventIds[from]) {
+          await deleteCalendarEvent(calEventIds[from]).catch(e => console.error('[Demo] Delete old event error:', e.message));
+          delete calEventIds[from];
+        }
         bookEvent({ date: result.date, time: result.time, job: result.jobType, postcode: result.postcode, callerNumber: from })
-          .then((evt) => console.log(`â [Demo] Event booked (via check) for ${from}: ${evt?.htmlLink || evt?.id || 'no id'}`))
-          .catch((calErr) => console.error(`â [Demo] bookEvent failed: ${calErr.message}\n${calErr.stack}`));
+          .then((evt) => { if (evt?.id) calEventIds[from] = evt.id; console.log('[Demo] Event booked (via check) for ' + from + ': ' + (evt?.htmlLink || evt?.id || 'no id')); })
+          .catch((calErr) => console.error('[Demo] bookEvent failed (check):', calErr.message));
       }
     }).catch((err) => console.error(`â [Demo] Booking check error: ${err.message}`));
     if (!sentPhotoLink) {
