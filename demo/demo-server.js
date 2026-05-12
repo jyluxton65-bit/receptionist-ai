@@ -274,3 +274,5 @@ app.listen(PORT, () => {
 💡 Text "reset demo" to any number to clear its conversation
   `);
 });
+
+module.exports = app;
