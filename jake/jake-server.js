@@ -10,6 +10,8 @@ const {
   getRecentConversations,
   getProspects,
   markBooked,
+  upsertProspect,
+  markSent,
 } = require('./jake-db');
 
 const app = express();
@@ -22,6 +24,14 @@ const twilioClient = twilio(
 );
 
 const JAKE_FROM = process.env.JAKE_PHONE_NUMBER;
+
+const OPENERS = [
+  "Hey, quick question. What happens when a customer calls and you're up a tree and can't answer?",
+  "Hi, just a quick one. When you're on a job and miss a call, do you usually get back to them or do they just go elsewhere?",
+  "Hey, random question. How many enquiries do you reckon you miss a week when you're mid job or off the clock?",
+  "Hi, just wanted to ask. What do you do with customer enquiries that come in after hours when you're done for the day?",
+  "Hey quick question. If someone texts you about a job while you're up a tree, how long does it usually take you to get back to them?",
+];
 
 // ── Google Calendar: book a Jake demo/onboard call ───────────────────────────
 async function bookJakeCalendarEvent(booking, prospectPhone) {
@@ -176,5 +186,51 @@ app.get('/api/prospects', (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
+
+// ── Manual campaign trigger ──────────────────────────────────────────────────
+app.post('/send-campaign', async (req, res) => {
+  const { contacts, dryRun } = req.body;
+  if (!Array.isArray(contacts) || contacts.length === 0) {
+    return res.status(400).json({ error: 'contacts array required. Body: { contacts: [{phone, name, business}] }' });
+  }
+  if (!JAKE_FROM) {
+    return res.status(500).json({ error: 'JAKE_PHONE_NUMBER not configured' });
+  }
+
+  const RATE_LIMIT_MS = 2000;
+  let sent = 0, skipped = 0, failed = 0;
+
+  // Respond immediately, process async
+  res.json({ status: 'started', total: contacts.length, dryRun: !!dryRun });
+
+  for (const contact of contacts) {
+    const phone = (contact.phone || contact.mobile || contact.number || '').trim();
+    if (!phone) { skipped++; continue; }
+    if (getConversation(phone).length > 0) {
+      console.log(`[Jake] Skipping ${phone} — already in conversation`);
+      skipped++;
+      continue;
+    }
+    const opener = OPENERS[Math.floor(Math.random() * OPENERS.length)];
+    upsertProspect(phone, contact.name || '', contact.business || '');
+    if (dryRun) {
+      sent++;
+      console.log(`[Jake] DRY RUN — would send to ${phone}: ${opener}`);
+      continue;
+    }
+    try {
+      await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
+      addMessage(phone, 'assistant', opener);
+      markSent(phone);
+      sent++;
+      console.log(`[Jake] Campaign sent to ${phone}`);
+    } catch (err) {
+      failed++;
+      console.error(`[Jake] Campaign failed for ${phone}: ${err.message}`);
+    }
+    await new Promise(r => setTimeout(r, RATE_LIMIT_MS));
+  }
+  console.log(`[Jake] Campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
+});
 
 module.exports = app;
