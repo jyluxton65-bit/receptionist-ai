@@ -50,6 +50,17 @@ const twilioClient = twilio(
 
 const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 // Tracks phones that have already received a photo upload link this session
+// Creates a self-contained quote ID with the customer phone embedded (HMAC-signed).
+// Survives Railway restarts — the /quote/:id route can reconstruct the record if the DB was wiped.
+function makeSignedQuoteId(phone) {
+  const cr = require('crypto');
+  const nonce = cr.randomBytes(4).toString('hex');
+  const secret = process.env.SESSION_SECRET || 'fallback-secret';
+  const phoneB64 = Buffer.from(phone).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const mac = cr.createHmac('sha256', secret).update(nonce + ':' + phone).digest('hex').slice(0, 8);
+  return nonce + mac + phoneB64;
+}
+
 const photoLinkSent = new Set();
 
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
@@ -106,8 +117,7 @@ const mediaUrl0 = req.body.MediaUrl0;
     addMessage(from, 'user', body || '[Customer sent a photo via MMS]');
     if (!photoLinkSent.has(from)) {
       const { createQuoteRequest } = require('../db');
-      const crypto = require('crypto');
-      const quoteId = crypto.randomBytes(8).toString('hex');
+      const quoteId = makeSignedQuoteId(from);
       createQuoteRequest(quoteId, from);
       const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
       const photoLink = `${baseUrl}/quote/${quoteId}`;
@@ -167,8 +177,7 @@ const mediaUrl0 = req.body.MediaUrl0;
     if (rawReply.includes('##PHOTO_REQUEST##')) {
       if (!photoLinkSent.has(from)) {
         const { createQuoteRequest } = require('../db');
-        const crypto = require('crypto');
-        const quoteId = crypto.randomBytes(8).toString('hex');
+        const quoteId = makeSignedQuoteId(from);
         createQuoteRequest(quoteId, from);
         const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
         const photoLink = `${baseUrl}/quote/${quoteId}`;
