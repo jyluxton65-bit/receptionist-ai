@@ -89,34 +89,33 @@ async function deleteCalendarEvent(eventId) {
 
 
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
-app.post('/demo/call-missed', async (req, res) => {
+app.post('/demo/call-missed', (req, res) => {
   const callerNumber = req.body.From;
-  const twiml        = new twilio.twiml.VoiceResponse();
 
-  const opener = `Hi, this is Sarah from Joe's Tree Services. Sorry Joe missed your call, he's out on a job. What was it you were after? I'll get him to sort it for you.`;
-
-  try {
-    await twilioClient.messages.create({
-      body: opener,
-      from: DEMO_FROM,
-      to: callerNumber,
-    });
-    addMessage(callerNumber, 'assistant', opener);
-    console.log(`â [Demo] Sent opener to ${callerNumber}`);
-  } catch (err) {
-    console.error('â [Demo] SMS failed:', err.message);
-  }
-
-  twiml.say({ voice: 'alice', language: 'en-GB' },
-    `Thanks for calling Joe's Tree Services. We're out on a job right now but we've just sent you a text. We'll be in touch very soon.`
+  // Respond to Twilio IMMEDIATELY — voice webhooks time out in ~5 s.
+  // Never await anything before sending TwiML or the call gets cut off.
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.pause({ length: 2 }); // 2-second pause before voicemail plays
+  twiml.say(
+    { voice: 'alice', language: 'en-GB' },
+    "Hi, you've reached Joe's Tree Services. We're unavailable right now, " +
+    "but text us on this number and we'll get straight back to you with a price. Thanks for calling!"
   );
   twiml.hangup();
 
   res.type('text/xml');
   res.send(twiml.toString());
+
+  // Send missed-call SMS in the background AFTER Twilio has been answered
+  const smsMsg = "Hi, sorry we missed your call! Text us here and we’ll get you a quote straight away 👍";
+  twilioClient.messages.create({ body: smsMsg, from: DEMO_FROM, to: callerNumber })
+    .then(() => {
+      addMessage(callerNumber, 'assistant', smsMsg);
+      console.log(`[Demo] Missed-call SMS sent to ${callerNumber}`);
+    })
+    .catch(err => console.error('[Demo] Missed-call SMS failed:', err.message));
 });
 
-// ââ Inbound SMS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/sms-incoming', (req, res) => {
   const from     = req.body.From;
   const body     = req.body.Body?.trim() || '';
