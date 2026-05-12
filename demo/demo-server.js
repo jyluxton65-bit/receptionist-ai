@@ -86,6 +86,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
   const numMedia = parseInt(req.body.NumMedia || '0');
+const mediaUrl0 = req.body.MediaUrl0;
   console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
@@ -100,8 +101,9 @@ app.post('/demo/sms-incoming', async (req, res) => {
   // Always store the incoming message in history so context is preserved
 
   // If customer tried to send photo via MMS (UK numbers do not support MMS)
-  if (numMedia > 0) {
+  if (numMedia > 0 || mediaUrl0) {
     console.log(` [Demo] NumMedia=${numMedia} from ${from} — UK MMS not supported, sending upload link`);
+    addMessage(from, 'user', body || '[Customer sent a photo via MMS]');
     if (!photoLinkSent.has(from)) {
       const { createQuoteRequest } = require('../db');
       const crypto = require('crypto');
@@ -109,7 +111,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
       createQuoteRequest(quoteId, from);
       const baseUrl = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
       const photoLink = `${baseUrl}/quote/${quoteId}`;
-      const linkMsg = `To get you an accurate quote, upload your photo here — takes 30 seconds: ${photoLink}`;
+      const linkMsg = `No worries, I can't receive photos by text. Just click this link, take or upload a photo of the tree, and I'll get you a rough price straight away. Takes about 30 seconds: ${photoLink}`;
       try {
         await twilioClient.messages.create({ body: linkMsg, from: DEMO_FROM, to: from });
         photoLinkSent.add(from);
@@ -175,7 +177,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
         sentPhotoLink = true;
         try {
           await twilioClient.messages.create({
-            body: `Here's a quick link to upload a photo — takes 30 seconds: ${photoLink}`,
+            body: `Just click the link, take or upload a photo of the tree, and I'll give you a rough price straight away. Takes about 30 seconds: ${photoLink}`,
             from: DEMO_FROM,
             to: from,
           });
