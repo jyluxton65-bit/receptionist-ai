@@ -62,6 +62,7 @@ function makeSignedQuoteId(phone) {
 }
 
 const photoLinkSent = new Set();
+const msgQueues = {};
 
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/call-missed', async (req, res) => {
@@ -92,21 +93,27 @@ app.post('/demo/call-missed', async (req, res) => {
 });
 
 // ââ Inbound SMS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-app.post('/demo/sms-incoming', async (req, res) => {
-  const from  = req.body.From;
-  const body  = req.body.Body?.trim() || '';
-  const twiml = new twilio.twiml.MessagingResponse();
+app.post('/demo/sms-incoming', (req, res) => {
+  const from     = req.body.From;
+  const body     = req.body.Body?.trim() || '';
   const numMedia = parseInt(req.body.NumMedia || '0');
-const mediaUrl0 = req.body.MediaUrl0;
+  const mediaUrl0 = req.body.MediaUrl0;
+
+  // Respond to Twilio immediately so the webhook never times out
+  res.type('text/xml');
+  res.send('<Response></Response>');
+
+  // Queue per phone — prevents race conditions when messages arrive close together
+  if (!msgQueues[from]) msgQueues[from] = Promise.resolve();
+  msgQueues[from] = msgQueues[from].then(async () => {
   console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
   if (body.toLowerCase() === 'reset demo') {
     clearConversation(from);
     photoLinkSent.delete(from);
-    twiml.message("Demo reset. Text anything to start a fresh conversation.");
-    res.type('text/xml');
-    return res.send(twiml.toString());
+    await twilioClient.messages.create({ body: 'Demo reset. Text anything to start a fresh conversation.', from: DEMO_FROM, to: from });
+    return;
   }
 
   // Always store the incoming message in history so context is preserved
@@ -133,8 +140,7 @@ const mediaUrl0 = req.body.MediaUrl0;
     } else {
       console.log(` [Demo] NumMedia>0 but link already sent to ${from} — skipping`);
     }
-    res.type('text/xml');
-    return res.send(twiml.toString());
+    return;
   }
   addMessage(from, 'user', body);
 
@@ -145,7 +151,7 @@ const mediaUrl0 = req.body.MediaUrl0;
   if (isPaused()) {
     console.log(`â¸ï¸  [Demo] PAUSED â storing message from ${from} but not replying`);
     res.type('text/xml');
-    return res.send(twiml.toString()); // empty TwiML = no bot reply
+    return; // paused — no reply
   }
 
   try {
@@ -224,16 +230,15 @@ const mediaUrl0 = req.body.MediaUrl0;
       }
     }).catch((err) => console.error(`â [Demo] Booking check error: ${err.message}`));
     if (!sentPhotoLink) {
-      twiml.message(reply);
+      await twilioClient.messages.create({ body: reply, from: DEMO_FROM, to: from });
     }
     console.log('â [Demo] Replied to ' + from + ': ' + reply);
   } catch (err) {
     console.error('â [Demo] Error:', err.message);
-    twiml.message("Sorry something went wrong, try sending that again!");
+    await twilioClient.messages.create({ body: 'Sorry something went wrong, try sending that again!', from: DEMO_FROM, to: from }).catch(() => {});
   }
 
-  res.type('text/xml');
-  res.send(twiml.toString());
+  }).catch(err => console.error('[Demo] Queue error for', from, ':', err));
 });
 
 // ââ Dashboard (PWA) âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
