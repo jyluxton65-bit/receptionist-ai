@@ -103,54 +103,62 @@ function parseJakeDatetime(dateStr, timeStr) {
 }
 
 // ── Inbound reply from a prospect ────────────────────────────────────────────
-app.post('/incoming', async (req, res) => {
-  const from     = req.body.From;
-  const body     = req.body.Body?.trim() || '';
-  const twiml    = new twilio.twiml.MessagingResponse();
+const msgQueues = {}; // per-phone queue — prevents double-handling
 
-  console.log(`📨 [Jake] Reply from ${from}: ${body}`);
+app.post('/incoming', (req, res) => {
+  const from = req.body.From;
+  const body = req.body.Body?.trim() || '';
 
-  // Opt-out handling
-  if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(body.toLowerCase())) {
-    console.log(`🚫 [Jake] Opt-out from ${from}`);
-    res.type('text/xml');
-    return res.send(twiml.toString()); // Twilio auto-handles STOP compliance
-  }
+  // Respond to Twilio immediately — prevents webhook timeout on slow AI responses
+  res.type('text/xml');
+  res.send('<Response></Response>');
 
-  addMessage(from, 'user', body);
+  // Queue per phone number to prevent double-handling if messages arrive close together
+  if (!msgQueues[from]) msgQueues[from] = Promise.resolve();
+  msgQueues[from] = msgQueues[from].then(async () => {
+    console.log(`[Jake] Reply from ${from}: ${body}`);
 
-  try {
-    const history   = getConversation(from);
-    const rawReply  = await getJakeReply(history);
-    const booking   = parseJakeBooking(rawReply);
-    const reply     = cleanJakeReply(rawReply);
+    // TODO (production): uncomment the line below to add a human-like delay before replying
+    // await new Promise(r => setTimeout(r, 25000 + Math.random() * 5000));
 
-    addMessage(from, 'assistant', reply);
-
-    // If a booking tag was detected, create the Calendar event and flag the prospect
-    if (booking) {
-      console.log(`📅 [Jake] Booking detected: ${booking.type} - ${booking.businessName} @ ${booking.date} ${booking.time}`);
-      await bookJakeCalendarEvent(booking, from);
-      markBooked(from);
-    } else if (/booked in|jay will (call|be in touch)/i.test(reply)) {
-      // Fallback: flag as booked even without a tag
-      markBooked(from);
+    // Opt-out handling (Twilio handles STOP compliance automatically)
+    if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(body.toLowerCase())) {
+      console.log(`[Jake] Opt-out from ${from}`);
+      return;
     }
 
-    await twilioClient.messages.create({
-      body: reply,
-      from: JAKE_FROM,
-      to: from,
-    });
+    addMessage(from, 'user', body);
 
-    console.log(`✅ [Jake] Replied to ${from}: ${reply}`);
-  } catch (err) {
-    console.error('❌ [Jake] Error:', err.message);
-  }
+    try {
+      const history   = getConversation(from);
+      const rawReply  = await getJakeReply(history);
+      const booking   = parseJakeBooking(rawReply);
+      const reply     = cleanJakeReply(rawReply);
 
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
+      addMessage(from, 'assistant', reply);
+
+      // If a booking tag was detected, create the Calendar event and flag the prospect
+      if (booking) {
+        console.log(`📅 [Jake] Booking detected: ${booking.type} - ${booking.businessName} @ ${booking.date} ${booking.time}`);
+        await bookJakeCalendarEvent(booking, from);
+        markBooked(from);
+      } else if (/booked in|jay will (call|be in touch)/i.test(reply)) {
+        // Fallback: flag as booked even without a tag
+        markBooked(from);
+      }
+
+      await twilioClient.messages.create({
+        body: reply,
+        from: JAKE_FROM,
+        to: from,
+      });
+
+      console.log(`✅ [Jake] Replied to ${from}: ${reply}`);
+    } catch (err) {
+      console.error('❌ [Jake] Error:', err.message);
+    }
+  }).catch(err => console.error('[Jake] Queue error for', from, ':', err));
+})
 
 // ── Simple read-only admin API ────────────────────────────────────────────────
 app.get('/api/conversations', (req, res) => {
