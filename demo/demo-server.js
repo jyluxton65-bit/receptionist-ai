@@ -144,6 +144,26 @@ app.post('/demo/sms-incoming', (req, res) => {
   }
   addMessage(from, 'user', body);
 
+  // Keyword photo check: if message mentions a photo but no MMS arrived, send upload link immediately
+  const _photoKW = ['photo', 'pic', 'picture', 'image', 'sent it', 'just sent', "can't send"];
+  const _bodyLow = body.toLowerCase();
+  if (_photoKW.some(kw => _bodyLow.includes(kw)) && !numMedia && !mediaUrl0 && !photoLinkSent.has(from)) {
+    const { createQuoteRequest: _cqr } = require('../db');
+    const _kwId = makeSignedQuoteId(from);
+    _cqr(_kwId, from);
+    const _kwBase = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
+    const _kwLink = `${_kwBase}/quote/${_kwId}`;
+    photoLinkSent.add(from);
+    const _kwMsg = `No worries, here's a quick link to upload a photo — takes 30 seconds: ${_kwLink}. Just send a photo of the tree and I'll get you a rough price straight away.`;
+    try {
+      await twilioClient.messages.create({ body: _kwMsg, from: DEMO_FROM, to: from });
+      addMessage(from, 'assistant', _kwMsg);
+      console.log(`📷 [Demo] Keyword photo link sent to ${from}`);
+    } catch (_kwErr) {
+      console.error('❌ [Demo] Keyword photo link error:', _kwErr.message);
+    }
+  }
+
   // PAUSED: bot stays silent â returns empty TwiML.
   // If Twilio SMS forwarding is configured on this number, the arborist's
   // personal phone receives the message as a normal text and can reply directly.
