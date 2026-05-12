@@ -12,6 +12,7 @@ const {
   markBooked,
   upsertProspect,
   markSent,
+  resetConversation,
 } = require('./jake-db');
 
 const app = express();
@@ -186,6 +187,37 @@ app.get('/api/prospects', (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
+
+// ── Testing helpers ──────────────────────────────────────────────────────────
+
+// Reset a conversation by phone so you can test fresh scenarios
+// Usage: POST /jake/reset/+447700900001
+app.post('/reset/:phone', (req, res) => {
+  const phone = decodeURIComponent(req.params.phone);
+  resetConversation(phone);
+  console.log(`[Jake] Reset conversation for ${phone}`);
+  res.json({ ok: true, phone, message: 'Conversation cleared — ready for a fresh test' });
+});
+
+// Fire Jake's opener at a single number right now (for testing)
+// Usage: POST /jake/text-me  body: { "phone": "+447700900001" }
+app.post('/text-me', async (req, res) => {
+  const phone = (req.body.phone || '').trim();
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  if (!JAKE_FROM) return res.status(500).json({ error: 'JAKE_PHONE_NUMBER not configured' });
+  const opener = OPENERS[Math.floor(Math.random() * OPENERS.length)];
+  try {
+    await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
+    upsertProspect(phone, '', '');
+    addMessage(phone, 'assistant', opener);
+    markSent(phone);
+    console.log(`[Jake] text-me sent to ${phone}: ${opener}`);
+    res.json({ ok: true, phone, opener });
+  } catch (err) {
+    console.error(`[Jake] text-me error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Manual campaign trigger ──────────────────────────────────────────────────
 app.post('/send-campaign', async (req, res) => {
