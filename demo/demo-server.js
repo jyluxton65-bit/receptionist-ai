@@ -34,10 +34,11 @@ const {
   setPaused,
 } = require('./demo-db');
 const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
+const { assessImageData } = require('../ai');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Serve PWA static assets
 app.use('/demo/public', express.static(path.join(__dirname, 'public')));
@@ -266,6 +267,33 @@ app.post('/demo/delay', async (req, res) => {
 });
 
 // ── Health ────────────────────────────────────────────────────────────────────
+
+// ── Photo upload submission ─────────────────────────────────────────────────
+app.post('/quote/:phone/submit', async (req, res) => {
+  const phone  = decodeURIComponent(req.params.phone);
+  const { imageData, mimeType, caption } = req.body;
+
+  console.log(`📸 [Demo] Photo upload from ${phone} | type: ${mimeType} | size: ${imageData ? imageData.length : 0} chars | caption: "${caption || '(none')}"`);
+
+  if (!imageData || !mimeType) {
+    console.error('❌ [Demo] Photo upload missing imageData or mimeType');
+    return res.status(400).json({ ok: false, error: 'Missing imageData or mimeType' });
+  }
+
+  try {
+    const assessment = await assessImageData(imageData, mimeType, caption || '');
+    console.log(`✅ [Demo] Assessment for ${phone}: ${assessment.slice(0, 80)}...`);
+
+    await twilioClient.messages.create({ body: assessment, from: DEMO_FROM, to: phone });
+    addMessage(phone, 'assistant', assessment);
+    console.log(`✅ [Demo] Sent photo assessment to ${phone}`);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`❌ [Demo] Photo submit failed for ${phone}:`, err.message);
+    res.status(500).json({ ok: false, error: 'Failed to process photo' });
+  }
+});
 app.get('/health', (req, res) => res.json({
   ok: true,
   service: 'demo-receptionist',
