@@ -38,8 +38,9 @@ QUALIFYING QUESTIONS to ask depending on job type:
 COVERAGE:
 - Yes: all South Manchester postcodes (M20, M21, M14, M16, M23, M22, M19, M18) and surrounds
 - Yes: Cheshire postcodes (SK1-SK12, WA14, WA15, WA16)
-- Maybe, ask for postcode: other M postcodes, North Cheshire
-- Politely decline: far north Manchester (Bury, Rochdale, Oldham), Liverpool, other regions
+- Yes: Wigan (WN1-WN6) — 22 miles from Didsbury, well within our 25-mile radius
+- Maybe, ask for postcode: other M postcodes, BL postcodes, OL postcodes, North Cheshire
+- Politely decline: Liverpool (L postcodes), Bury, Rochdale, far north Manchester, any area over 25 miles from Didsbury M20
 
 BOOKING:
 - If they want to book in or get a quote visit, nail down: job type, postcode, when they want it
