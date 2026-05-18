@@ -14,6 +14,8 @@ const {
   markSent,
   resetConversation,
 } = require('./jake-db');
+const { updateLastMessageAt, getProspectsNeedingFollowUp, markFollowUpSent } = require('./jake-db');
+
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -139,6 +141,7 @@ app.post('/incoming', (req, res) => {
     }
 
     addMessage(from, 'user', body);
+    updateLastMessageAt(from);
 
     try {
       const history   = getConversation(from);
@@ -263,5 +266,31 @@ app.post('/send-campaign', async (req, res) => {
   }
   console.log(`[Jake] Campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
 });
+
+// ── Hourly follow-up job ─────────────────────────────────────────────────────
+const FOLLOW_UP_MSG = "Hey, just checking back in — still happy to jump on a quick call and show you how it works if you're interested. No pressure either way 👍";
+
+setInterval(async () => {
+  try {
+    const prospects = getProspectsNeedingFollowUp();
+    console.log(`🔔 [Jake] Follow-up check: ${prospects.length} prospect(s) eligible`);
+    for (const p of prospects) {
+      try {
+        await twilioClient.messages.create({
+          body: FOLLOW_UP_MSG,
+          from: process.env.JAKE_PHONE_NUMBER,
+          to: p.phone,
+        });
+        addMessage(p.phone, 'assistant', FOLLOW_UP_MSG);
+        markFollowUpSent(p.phone);
+        console.log(`✅ [Jake] Follow-up sent to ${p.phone} (${p.name || 'unknown'})`);
+      } catch (err) {
+        console.error(`❌ [Jake] Follow-up failed for ${p.phone}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('❌ [Jake] Follow-up job error:', err.message);
+  }
+}, 60 * 60 * 1000); // every hour
 
 module.exports = app;
