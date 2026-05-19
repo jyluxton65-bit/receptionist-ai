@@ -273,7 +273,7 @@ app.post('/quote/:phone/submit', async (req, res) => {
   const phone  = decodeURIComponent(req.params.phone);
   const { imageData, mimeType, caption } = req.body;
 
-  console.log(`📸 [Demo] Photo upload from ${phone} | type: ${mimeType} | size: ${imageData ? imageData.length : 0} chars | caption: "${caption || '(none')}"`);
+  console.log(`📸 [Demo] Photo upload from ${phone} | type: ${mimeType} | size: ${imageData ? imageData.length : 0} chars | caption: "${caption || '(none)'}"`);
 
   if (!imageData || !mimeType) {
     console.error('❌ [Demo] Photo upload missing imageData or mimeType');
