@@ -32,8 +32,8 @@ const JAKE_FROM = process.env.JAKE_PHONE_NUMBER;
 console.log('\n🔑 [Jake] Google OAuth env check:');
 console.log('  GOOGLE_CLIENT_ID:     ', process.env.GOOGLE_CLIENT_ID     ? '✅ present' : '❌ MISSING');
 console.log('  GOOGLE_CLIENT_SECRET: ', process.env.GOOGLE_CLIENT_SECRET ? '✅ present' : '❌ MISSING');
-console.log('  GOOGLE_REFRESH_TOKEN: ', process.env.GOOGLE_REFRESH_TOKEN ? '✅ present' : '❌ MISSING');
-console.log('  GOOGLE_CALENDAR_ID:   ', process.env.GOOGLE_CALENDAR_ID   ? '✅ present' : '❌ MISSING');
+console.log('  JAKE_GOOGLE_REFRESH_TOKEN: ', process.env.JAKE_GOOGLE_REFRESH_TOKEN ? '✅ present' : '❌ MISSING');
+console.log('  JAKE_GOOGLE_CALENDAR_ID:   ', process.env.JAKE_GOOGLE_CALENDAR_ID   ? '✅ present' : '❌ MISSING');
 console.log('  GOOGLE_REDIRECT_URI:  ', process.env.GOOGLE_REDIRECT_URI  ? '✅ present' : '❌ MISSING');
 
 // Quick OAuth token check
@@ -44,7 +44,7 @@ try {
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI,
   );
-  _auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  _auth.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
   _auth.getAccessToken().then(({ token }) => {
     console.log('  Access token fetch:  ', token ? '✅ success (token starts: ' + token.substring(0, 20) + '...)' : '❌ returned null');
   }).catch(err => {
@@ -71,7 +71,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI,
     );
-    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    auth.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
 
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -102,7 +102,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
     };
 
     const resp = await calendar.events.insert({
-      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+      calendarId: process.env.JAKE_GOOGLE_CALENDAR_ID || 'primary',
       resource: event,
     });
 
@@ -224,8 +224,8 @@ app.get('/test-calendar', async (req, res) => {
   results.envVars = {
     GOOGLE_CLIENT_ID:     !!process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
-    GOOGLE_REFRESH_TOKEN: !!process.env.GOOGLE_REFRESH_TOKEN,
-    GOOGLE_CALENDAR_ID:   !!process.env.GOOGLE_CALENDAR_ID,
+    JAKE_GOOGLE_REFRESH_TOKEN: !!process.env.JAKE_GOOGLE_REFRESH_TOKEN,
+    JAKE_GOOGLE_CALENDAR_ID:   !!process.env.JAKE_GOOGLE_CALENDAR_ID,
     GOOGLE_REDIRECT_URI:  !!process.env.GOOGLE_REDIRECT_URI,
   };
 
@@ -236,7 +236,7 @@ app.get('/test-calendar', async (req, res) => {
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI,
     );
-    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    auth.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
 
     const tokenResult = await auth.getAccessToken();
     results.accessToken = tokenResult.token ? 'ok (starts: ' + tokenResult.token.substring(0, 20) + '...)' : 'null';
@@ -246,7 +246,7 @@ app.get('/test-calendar', async (req, res) => {
     const now = new Date();
     const end = new Date(now.getTime() + 30 * 60 * 1000);
 
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    const calendarId = process.env.JAKE_GOOGLE_CALENDAR_ID || 'primary';
     results.calendarId = calendarId;
 
     const event = await calendar.events.insert({
