@@ -28,6 +28,33 @@ const twilioClient = twilio(
 
 const JAKE_FROM = process.env.JAKE_PHONE_NUMBER;
 
+// ── Google OAuth startup diagnostics ─────────────────────────────────────────
+console.log('\n🔑 [Jake] Google OAuth env check:');
+console.log('  GOOGLE_CLIENT_ID:     ', process.env.GOOGLE_CLIENT_ID     ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_CLIENT_SECRET: ', process.env.GOOGLE_CLIENT_SECRET ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_REFRESH_TOKEN: ', process.env.GOOGLE_REFRESH_TOKEN ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_CALENDAR_ID:   ', process.env.GOOGLE_CALENDAR_ID   ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_REDIRECT_URI:  ', process.env.GOOGLE_REDIRECT_URI  ? '✅ present' : '❌ MISSING');
+
+// Quick OAuth token check
+try {
+  const { google: _google } = require('googleapis');
+  const _auth = new _google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI,
+  );
+  _auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  _auth.getAccessToken().then(({ token }) => {
+    console.log('  Access token fetch:  ', token ? '✅ success (token starts: ' + token.substring(0, 20) + '...)' : '❌ returned null');
+  }).catch(err => {
+    console.log('  Access token fetch:  ❌ FAILED —', err.message);
+  });
+} catch (err) {
+  console.log('  OAuth init error:    ❌', err.message);
+}
+
+
 const OPENERS = [
   "Hey, quick question. What happens when a customer calls and you're up a tree and can't answer?",
   "Hi, just a quick one. When you're on a job and miss a call, do you usually get back to them or do they just go elsewhere?",
@@ -189,6 +216,63 @@ app.get('/api/prospects', (req, res) => {
 });
 
 // ── Health ────────────────────────────────────────────────────────────────────
+// ── Calendar diagnostics ─────────────────────────────────────────────────────
+app.get('/test-calendar', async (req, res) => {
+  const results = {};
+
+  // Check env vars
+  results.envVars = {
+    GOOGLE_CLIENT_ID:     !!process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_REFRESH_TOKEN: !!process.env.GOOGLE_REFRESH_TOKEN,
+    GOOGLE_CALENDAR_ID:   !!process.env.GOOGLE_CALENDAR_ID,
+    GOOGLE_REDIRECT_URI:  !!process.env.GOOGLE_REDIRECT_URI,
+  };
+
+  // Try fetching an access token
+  try {
+    const auth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI,
+    );
+    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+
+    const tokenResult = await auth.getAccessToken();
+    results.accessToken = tokenResult.token ? 'ok (starts: ' + tokenResult.token.substring(0, 20) + '...)' : 'null';
+
+    // Try creating a test event
+    const calendar = google.calendar({ version: 'v3', auth });
+    const now = new Date();
+    const end = new Date(now.getTime() + 30 * 60 * 1000);
+
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    results.calendarId = calendarId;
+
+    const event = await calendar.events.insert({
+      calendarId,
+      resource: {
+        summary: '[TEST] Jake calendar diagnostic',
+        description: 'Auto-created by /test-calendar endpoint — safe to delete',
+        start: { dateTime: now.toISOString(), timeZone: 'Europe/London' },
+        end:   { dateTime: end.toISOString(), timeZone: 'Europe/London' },
+      },
+    });
+
+    results.eventCreated = true;
+    results.eventId = event.data.id;
+    results.eventLink = event.data.htmlLink;
+    results.status = 'SUCCESS';
+  } catch (err) {
+    results.error = err.message;
+    results.errorCode = err.code;
+    results.errorDetails = err.errors || null;
+    results.status = 'FAILED';
+  }
+
+  res.json(results);
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
 
 // ── Testing helpers (browser-friendly GET endpoints) ─────────────────────────
