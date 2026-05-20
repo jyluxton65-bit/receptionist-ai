@@ -116,3 +116,32 @@ For multiple customers on one server, move these into a database per customer an
 - [ ] Add a simple dashboard to see all conversations
 - [ ] Add follow-up SMS if customer doesn't reply within 30 mins
 - [ ] Introduce Voice AI plan (Twilio Voice + Claude for live call handling)
+
+
+## Twilio Fallback Configuration
+
+Each Twilio number has a fallback URL that Twilio will use if your server is unreachable or returns an error. This must be set **manually in the Twilio console** for each number — it cannot be configured in code.
+
+### How to set it up
+
+1. Go to [console.twilio.com](https://console.twilio.com) → Phone Numbers → Manage → Active Numbers
+2. Click the number you want to configure
+3. Under **Messaging Configuration**, find the **A message comes in** section
+4. In the **Fallback URL** field, enter:
+   `https://handler.twilio.com/twiml/[your_fallback_twiml_id]`
+5. Repeat for each number (demo number and Jake's number)
+
+### Creating the TwiML Bin (fallback message)
+
+1. Go to [console.twilio.com/us1/develop/runtime/twiml-bins](https://console.twilio.com/us1/develop/runtime/twiml-bins)
+2. Create a new TwiML Bin with this content:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Hi, sorry we're experiencing a short technical issue right now. We'll be back up shortly and will respond to your message as soon as we're back online. Apologies for the inconvenience!</Message>
+</Response>
+```
+3. Save it and copy the URL — this is your `[fallback_twiml_id]`
+4. Paste the full URL into the Fallback URL field for each number
+
+> **Note:** The /health endpoint on both bots returns `{"status":"ok"}` and can be used to verify the server is running.
