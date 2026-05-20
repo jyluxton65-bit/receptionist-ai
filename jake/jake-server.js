@@ -273,7 +273,7 @@ app.get('/test-calendar', async (req, res) => {
   res.json(results);
 });
 
-app.get('/health', (req, res) => res.json({ ok: true, service: 'jake-outbound' }));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ── Testing helpers (browser-friendly GET endpoints) ─────────────────────────
 
