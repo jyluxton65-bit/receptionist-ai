@@ -400,4 +400,25 @@ app.get('/save-token', async (req, res) => {
   const { tokens } = await oauth2Client.getToken(code);
   res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> — copy this into your JAKE_GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
+
+    // — Test calendar connection
+app.get('/test-calendar', async (req, res) => {
+    try {
+          oauth2Client.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
+          const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+          const now = new Date();
+          const end = new Date(now.getTime() + 30 * 60 * 1000);
+          await calendar.events.insert({
+                  calendarId: process.env.JAKE_GOOGLE_CALENDAR_ID,
+                  requestBody: {
+                            summary: 'Test Event - Calendar Connection Check',
+                            start: { dateTime: now.toISOString() },
+                            end: { dateTime: end.toISOString() },
+                  },
+          });
+          res.json({ status: 'SUCCESS', event: 'created' });
+    } catch (err) {
+          res.json({ status: 'FAILED', error: err.message });
+    }
+});
 module.exports = app;
