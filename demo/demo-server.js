@@ -294,13 +294,7 @@ app.post('/quote/:phone/submit', async (req, res) => {
     res.status(500).json({ ok: false, error: 'Failed to process photo' });
   }
 });
-app.get('/health', (req, res) => res.json({
-  ok: true,
-  service: 'demo-receptionist',
-  business: "Joe's Tree Services",
-  location: 'Didsbury, M20',
-  paused: isPaused(),
-}));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.DEMO_PORT || 3002;
 app.listen(PORT, () => {
