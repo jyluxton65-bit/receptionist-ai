@@ -3,6 +3,12 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const express  = require('express');
 const twilio   = require('twilio');
 const { google } = require('googleapis');
+
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'https://receptionist-ai-production-1c42.up.railway.app/save-token'
+);
 const { getJakeReply, parseJakeBooking, cleanJakeReply } = require('./jake-ai');
 const {
   addMessage,
@@ -381,45 +387,17 @@ setInterval(async () => {
 // ── Google re-auth ───────────────────────────────────────────────────────────
 
 app.get('/reauth-google', (req, res) => {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    `${req.protocol}://${req.get('host')}/jake/save-token`
-  );
-  const url = oauth2Client.generateAuthUrl({
+  const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    prompt:       'consent',
-    scope:        ['https://www.googleapis.com/auth/calendar'],
+    prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/calendar']
   });
-  res.redirect(url);
+  res.redirect(authUrl);
 });
 
 app.get('/save-token', async (req, res) => {
   const { code } = req.query;
-  if (!code) return res.status(400).send('<h2>Error: no code param in URL</h2>');
-  try {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      `${req.protocol}://${req.get('host')}/jake/save-token`
-    );
-    const { tokens } = await oauth2Client.getToken(code);
-    if (!tokens.refresh_token) {
-      return res.send(`
-        <h2>⚠️ No refresh token returned</h2>
-        <p>Google only returns a refresh token on the first authorisation.
-           Go to <a href="https://myaccount.google.com/permissions">Google Account Permissions</a>,
-           revoke access for this app, then visit /jake/reauth-google again.</p>
-      `);
-    }
-    res.send(`
-      <h2>✅ New refresh token generated</h2>
-      <p>Copy this value and set it as <strong>JAKE_GOOGLE_REFRESH_TOKEN</strong> in Railway, then redeploy:</p>
-      <textarea rows="4" cols="90" onclick="this.select()" style="font-family:monospace">${tokens.refresh_token}</textarea>
-    `);
-  } catch (err) {
-    res.status(500).send(`<h2>Error exchanging code</h2><pre>${err.message}</pre>`);
-  }
+  const { tokens } = await oauth2Client.getToken(code);
+  res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> — copy this into your JAKE_GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
-
 module.exports = app;
