@@ -7,7 +7,7 @@ const { google } = require('googleapis');
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'https://receptionist-ai-production-1c42.up.railway.app/save-token'
+  'https://receptionist-ai-production-1c42.up.railway.app/jake/save-token'
 );
 const { getJakeReply, parseJakeBooking, cleanJakeReply } = require('./jake-ai');
 const {
