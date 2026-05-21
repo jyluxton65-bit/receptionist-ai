@@ -362,7 +362,7 @@ app.options('/quote/:phone/submit', (req, res) => {
 app.post('/quote/:phone/submit', upload.single('photo'), async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
 
-  const phone = decodeURIComponent(req.params.phone);
+  const phone = decodeURIComponent(req.query.phone || req.body.phone || req.params.phone || '');
   console.log(`ð¸ [Demo] Upload attempt from ${phone}`);
   console.log(`ð¸ [Demo] Content-Type: ${req.headers['content-type']}`);
   console.log(`ð¸ [Demo] Body keys: ${Object.keys(req.body || {}).join(', ')}`);
