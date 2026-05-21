@@ -20,6 +20,7 @@ const {
   markSent,
   resetConversation,
 } = require('./jake-db');
+const { runCampaign } = require('./send-campaign');
 const { updateLastMessageAt, getProspectsNeedingFollowUp, markFollowUpSent } = require('./jake-db');
 
 
@@ -357,6 +358,15 @@ app.post('/send-campaign', async (req, res) => {
   console.log(`[Jake] Campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
 });
 
+// ── Campaign trigger (GET) — calls runCampaign from send-campaign.js ─────────
+app.get('/trigger-campaign', async (req, res) => {
+  try {
+    await runCampaign('jake/contacts.csv');
+    res.send('Campaign triggered successfully');
+  } catch (err) {
+    res.send('Error: ' + err.message);
+  }
+});
 // ── Campaign trigger — reads jake/contacts.csv from disk ─────────────────────
 app.post('/trigger-campaign', async (req, res) => {
   const fs = require('fs');
