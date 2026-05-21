@@ -211,7 +211,7 @@ app.post('/demo/delay', async (req, res) => {
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI,
     );
-    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    auth.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
     const calendar = google.calendar({ version: 'v3', auth });
 
     const now      = new Date();
@@ -220,7 +220,7 @@ app.post('/demo/delay', async (req, res) => {
 
     // List all remaining events today
     const listResp = await calendar.events.list({
-      calendarId:  process.env.GOOGLE_CALENDAR_ID || 'primary',
+      calendarId:  process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary',
       timeMin:     now.toISOString(),
       timeMax:     endOfDay.toISOString(),
       singleEvents: true,
@@ -235,7 +235,7 @@ app.post('/demo/delay', async (req, res) => {
       const newEnd   = new Date(new Date(event.end.dateTime).getTime()   + delayMs);
 
       await calendar.events.patch({
-        calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+        calendarId: process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary',
         eventId:    event.id,
         resource: {
           start: { dateTime: newStart.toISOString(), timeZone: 'Europe/London' },
@@ -344,7 +344,7 @@ app.get('/demo/reauth-google', (req, res) => {
 app.get('/demo/save-token', async (req, res) => {
   const { code } = req.query;
   const { tokens } = await demoOauth2Client.getToken(code);
-  res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> â copy this into your GOOGLE_REFRESH_TOKEN env var on Railway`);
+  res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> â copy this into your DEMO_GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
 
 // ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
