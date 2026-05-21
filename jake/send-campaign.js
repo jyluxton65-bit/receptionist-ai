@@ -61,9 +61,9 @@ function parseCSV(filePath) {
 
 async function runCampaign(csvPath) {
   if (!fs.existsSync(csvPath)) {
-    console.error('CSV file not found: ' + csvPath); process.exit(1);
+    throw new Error('CSV file not found: ' + csvPath);
   }
-  if (!JAKE_FROM) { console.error('JAKE_PHONE_NUMBER not set'); process.exit(1); }
+  if (!JAKE_FROM) { throw new Error('JAKE_PHONE_NUMBER not set'); }
   const contacts = parseCSV(csvPath);
   console.log('Loaded ' + contacts.length + ' contacts from ' + csvPath);
   if (DRY_RUN) console.log('DRY RUN mode - no messages sent');
@@ -88,9 +88,16 @@ async function runCampaign(csvPath) {
   console.log('Campaign done. Sent: ' + sent + ' Skipped: ' + skipped + ' Failed: ' + failed);
 }
 
+if (require.main === module) {
 const csvArg = process.argv[2];
 if (!csvArg) {
-  console.error('Usage: node jake/send-campaign.js <path-to-contacts.csv>');
-  process.exit(1);
+console.error('Usage: node jake/send-campaign.js <path-to-contacts.csv>');
+process.exit(1);
 }
-runCampaign(path.resolve(csvArg));
+runCampaign(path.resolve(csvArg)).catch(err => {
+console.error(err.message);
+process.exit(1);
+});
+}
+
+module.exports = { runCampaign };
