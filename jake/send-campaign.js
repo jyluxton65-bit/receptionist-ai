@@ -66,6 +66,9 @@ async function runCampaign(csvPath) {
   if (!JAKE_FROM) { throw new Error('JAKE_PHONE_NUMBER not set'); }
   const contacts = parseCSV(csvPath);
   console.log('Loaded ' + contacts.length + ' contacts from ' + csvPath);
+   console.log('[Jake] CSV path:', csvPath);
+   console.log('[Jake] Raw CSV:\n' + fs.readFileSync(csvPath, 'utf8'));
+   console.log('[Jake] Parsed phones:', JSON.stringify(contacts.map(c => c.phone)));
   if (DRY_RUN) console.log('DRY RUN mode - no messages sent');
   let sent = 0, skipped = 0, failed = 0;
   for (const contact of contacts) {
@@ -76,7 +79,8 @@ async function runCampaign(csvPath) {
     upsertProspect(phone, contact.name || '', contact.business || '');
     if (DRY_RUN) { sent++; continue; }
     try {
-      await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
+            console.log('[Jake] Sending to ' + phone + ' | msg: ' + opener.slice(0, 60));
+await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
       addMessage(phone, 'assistant', opener);
       markSent(phone); sent++;
       console.log('Sent to ' + phone);
