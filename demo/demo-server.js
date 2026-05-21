@@ -60,24 +60,42 @@ const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 // ── Booking date/time parsers ───────────────────────────────────────────
 function parseDateString(dateStr) {
-  const direct = new Date(dateStr);
-  if (!isNaN(direct)) return direct;
+  const lower = (dateStr || '').toLowerCase().trim();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Relative keywords
+  if (lower === 'today' || lower === 'tonight')
+    return new Date(today);
+  if (lower === 'tomorrow')
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (lower.includes('day after tomorrow'))
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
+  if (lower.includes('next week'))
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+
+  // "in X days"
+  const inDays = lower.match(/in\s+(\d+)\s+days?/);
+  if (inDays)
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + parseInt(inDays[1]));
+
+  // Day names: "thursday", "next thursday", "this thursday"
   const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-  const lower = dateStr.toLowerCase();
   const isNext = lower.includes('next');
   for (let i = 0; i < days.length; i++) {
     if (lower.includes(days[i])) {
-      const now = new Date();
-      let diff = i - now.getDay();
+      let diff = i - today.getDay();
       if (diff <= 0 || isNext) diff += 7;
-      const target = new Date(now);
-      target.setDate(now.getDate() + diff);
-      return target;
+      return new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
     }
   }
+
+  // Try direct parse as fallback ("2025-01-23", "23rd January", etc.)
+  const direct = new Date(dateStr);
+  if (!isNaN(direct)) return direct;
+
   return null;
 }
-
 function parseTimeString(timeStr) {
   const lower = (timeStr || '').toLowerCase().trim();
   if (lower === 'morning')   return { hour: 9,  minute: 0 };
