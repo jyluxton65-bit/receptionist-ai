@@ -26,6 +26,8 @@ const twilio     = require('twilio');
 const { google } = require('googleapis');
 const multer     = require('multer');
 
+const { addDays, startOfToday, nextDay, setDay } = require('date-fns');
+
 const demoOauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
@@ -44,8 +46,8 @@ const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
 const { assessImageData } = require('../ai');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve PWA static assets
 app.use('/demo/public', express.static(path.join(__dirname, 'public')));
@@ -61,36 +63,30 @@ const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 // ── Booking date/time parsers ───────────────────────────────────────────
 function parseDateString(dateStr) {
   const lower = (dateStr || '').toLowerCase().trim();
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = startOfToday(); // midnight today, local time
 
-  // Relative keywords
-  if (lower === 'today' || lower === 'tonight')
-    return new Date(today);
-  if (lower === 'tomorrow')
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-  if (lower.includes('day after tomorrow'))
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
-  if (lower.includes('next week'))
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+  if (lower === 'today' || lower === 'tonight')   return today;
+  if (lower === 'tomorrow')                        return addDays(today, 1);
+  if (lower.includes('day after tomorrow'))        return addDays(today, 2);
+  if (lower.includes('next week'))                 return addDays(today, 7);
 
   // "in X days"
   const inDays = lower.match(/in\s+(\d+)\s+days?/);
-  if (inDays)
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + parseInt(inDays[1]));
+  if (inDays) return addDays(today, parseInt(inDays[1]));
 
-  // Day names: "thursday", "next thursday", "this thursday"
-  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  // Day names — resolve to NEXT occurrence (never today if it's already past)
+  const dayNames = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
   const isNext = lower.includes('next');
-  for (let i = 0; i < days.length; i++) {
-    if (lower.includes(days[i])) {
-      let diff = i - today.getDay();
+  for (const [name, num] of Object.entries(dayNames)) {
+    if (lower.includes(name)) {
+      const current = today.getDay();
+      let diff = num - current;
       if (diff <= 0 || isNext) diff += 7;
-      return new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
+      return addDays(today, diff);
     }
   }
 
-  // Try direct parse as fallback ("2025-01-23", "23rd January", etc.)
+  // Fallback: try native Date parse
   const direct = new Date(dateStr);
   if (!isNaN(direct)) return direct;
 
@@ -364,7 +360,7 @@ app.post('/demo/delay', async (req, res) => {
 // ââ Photo upload submission âââââââââââââââââââââââââââââââââââââââââââââââââ
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 // CORS preflight for upload endpoint
@@ -437,6 +433,11 @@ app.get('/demo/save-token', async (req, res) => {
 
 // ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+
+// ── Startup: log presence of calendar env vars ───────────────────────────────
+console.log('[Demo] DEMO_GOOGLE_REFRESH_TOKEN set:', !!process.env.DEMO_GOOGLE_REFRESH_TOKEN);
+console.log('[Demo] DEMO_GOOGLE_CALENDAR_ID    set:', !!process.env.DEMO_GOOGLE_CALENDAR_ID, process.env.DEMO_GOOGLE_CALENDAR_ID || '(missing)');
 
 const PORT = process.env.DEMO_PORT || 3002;
 app.listen(PORT, () => {
