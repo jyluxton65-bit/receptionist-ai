@@ -357,6 +357,64 @@ app.post('/send-campaign', async (req, res) => {
   console.log(`[Jake] Campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
 });
 
+// ── Campaign trigger — reads jake/contacts.csv from disk ─────────────────────
+app.post('/trigger-campaign', async (req, res) => {
+  const fs = require('fs');
+  const csvPath = path.join(__dirname, 'contacts.csv');
+
+  if (!fs.existsSync(csvPath)) {
+    return res.status(404).json({ error: 'contacts.csv not found at ' + csvPath });
+  }
+  if (!JAKE_FROM) {
+    return res.status(500).json({ error: 'JAKE_PHONE_NUMBER not configured' });
+  }
+
+  const raw = fs.readFileSync(csvPath, 'utf-8');
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const contacts = lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim());
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  });
+
+  const dryRun = req.body.dryRun === true || req.query.dryRun === 'true';
+  const RATE_LIMIT_MS = 2000;
+  let sent = 0, skipped = 0, failed = 0;
+
+  res.json({ status: 'started', total: contacts.length, dryRun, csv: csvPath });
+
+  for (const contact of contacts) {
+    const phone = (contact.phone || contact.mobile || contact.number || '').trim();
+    if (!phone) { skipped++; continue; }
+    if (getConversation(phone).length > 0) {
+      console.log(`[Jake] Skipping ${phone} — already in conversation`);
+      skipped++;
+      continue;
+    }
+    const opener = OPENERS[Math.floor(Math.random() * OPENERS.length)];
+    upsertProspect(phone, contact.name || '', contact.business || '');
+    if (dryRun) {
+      sent++;
+      console.log(`[Jake] DRY RUN — would send to ${phone}: ${opener}`);
+      continue;
+    }
+    try {
+      await twilioClient.messages.create({ body: opener, from: JAKE_FROM, to: phone });
+      addMessage(phone, 'assistant', opener);
+      markSent(phone);
+      sent++;
+      console.log(`[Jake] Campaign sent to ${phone}`);
+    } catch (err) {
+      failed++;
+      console.error(`[Jake] Campaign failed for ${phone}: ${err.message}`);
+    }
+    await new Promise(r => setTimeout(r, RATE_LIMIT_MS));
+  }
+  console.log(`[Jake] trigger-campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
+});
+
 // ── Hourly follow-up job ─────────────────────────────────────────────────────
 const FOLLOW_UP_MSG = "Hey, just checking back in — still happy to jump on a quick call and show you how it works if you're interested. No pressure either way 👍";
 
