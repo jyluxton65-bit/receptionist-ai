@@ -242,11 +242,11 @@
     document.getElementById('form-card').style.display = 'none';
     document.getElementById('state-uploading').classList.add('active');
 
-    const id = window.location.pathname.split('/').pop();
+    const id = new URLSearchParams(window.location.search).get('phone') || window.location.pathname.split('/').pop();
     const caption = document.getElementById('caption').value.trim();
 
     try {
-      const resp = await fetch('/quote/' + id + '/submit', {
+      const resp = await fetch('/quote/' + encodeURIComponent(id) + '/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageData: compressedB64, mimeType: compressedMime, caption })
