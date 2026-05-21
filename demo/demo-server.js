@@ -59,6 +59,10 @@ const twilioClient = twilio(
 
 const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 
+// Per-phone queue — ensures sequential processing and prevents duplicate replies
+const phoneQueues = new Map();
+
+
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 // ── Booking date/time parsers ───────────────────────────────────────────
 function parseDateString(dateStr) {
@@ -131,111 +135,93 @@ app.post('/demo/call-missed', (req, res) => {
 });
 
 // ââ Inbound SMS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-app.post('/demo/sms-incoming', async (req, res) => {
-  // Guard: ignore voice webhooks accidentally pointed here
+app.post('/demo/sms-incoming', (req, res) => {
   if (req.body.CallSid) {
     res.type('text/xml');
     return res.send('<Response></Response>');
   }
+  const from    = req.body.From;
+  const body    = req.body.Body?.trim() || '';
+  const reqBody = req.body;
+  console.log(`📨 [Demo] SMS from ${from}: ${body}`);
+  // Respond to Twilio immediately — prevents duplicate retries from slow processing
+  res.type('text/xml');
+  res.send('<Response></Response>');
+  // Queue per phone — second message waits for first to finish
+  const prev = phoneQueues.get(from) || Promise.resolve();
+  const next = prev.then(() => handleSMS(from, body, reqBody)).catch(err =>
+    console.error(`❌ [Demo] Queue error for ${from}:`, err.message)
+  );
+  phoneQueues.set(from, next);
+  next.finally(() => { if (phoneQueues.get(from) === next) phoneQueues.delete(from); });
+});
 
-  const from  = req.body.From;
-  const body  = req.body.Body?.trim() || '';
-  const twiml = new twilio.twiml.MessagingResponse();
-
-  console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
-
-  // Allow demo reset via special keyword
+async function handleSMS(from, body, reqBody) {
   if (body.toLowerCase() === 'reset demo') {
     clearConversation(from);
-    twiml.message("Demo reset. Text anything to start a fresh conversation.");
-    res.type('text/xml');
-    return res.send(twiml.toString());
+    await twilioClient.messages.create({ body: 'Demo reset. Text anything to start a fresh conversation.', from: DEMO_FROM, to: from });
+    return;
   }
-
-  // Always store the incoming message in history so context is preserved
   addMessage(from, 'user', body);
-
-  // PAUSED: bot stays silent â returns empty TwiML.
-  // If Twilio SMS forwarding is configured on this number, the arborist's
-  // personal phone receives the message as a normal text and can reply directly.
-  // History is maintained so the bot resumes seamlessly on RESUME.
   if (isPaused()) {
-    console.log(`â¸ï¸  [Demo] PAUSED â storing message from ${from} but not replying`);
-    res.type('text/xml');
-    return res.send(twiml.toString()); // empty TwiML = no bot reply
+    console.log(`⏸️ [Demo] PAUSED — storing message from ${from} but not replying`);
+    return;
   }
-
   try {
-    const numMedia   = parseInt(req.body.NumMedia || '0', 10);
-    const history    = getConversation(from);
-    const rawReply   = await getDemoReply(from, history);
-    const booking    = parseBooking(rawReply);
-    let reply        = cleanReply(rawReply);
-
-    // If the customer mentioned a photo but none came through, or the bot says
-    // it can't see it, inject the upload link alongside follow-up questions.
+    const numMedia = parseInt(reqBody.NumMedia || '0', 10);
+    const history  = getConversation(from);
+    const rawReply = await getDemoReply(from, history);
+    const booking  = parseBooking(rawReply);
+    let reply      = cleanReply(rawReply);
     const mentionedPhoto = /\b(photo|pic|picture|image|snap)\b/i.test(body);
     const botCantSee     = /can.t see|not (?:coming|getting) through|didn.t (?:come|get) through|no photo|no image/i.test(reply);
-
     if ((mentionedPhoto && numMedia === 0) || botCantSee) {
       const baseUrl    = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
       const uploadLink = baseUrl + '/quote-upload.html?phone=' + encodeURIComponent(from);
-      reply = 'Still not getting the photo through â happens sometimes with texts. Hereâs a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
+      reply = 'Still not getting the photo through — happens sometimes with texts. Here\'s a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
     }
-
     addMessage(from, 'assistant', reply);
-
+    await twilioClient.messages.create({ body: reply, from: DEMO_FROM, to: from });
+    console.log(`✅ [Demo] Replied to ${from}: ${reply.slice(0, 80)}`);
     if (booking) {
       console.log(`📅 [Demo] Booking detected: ${JSON.stringify(booking)}`);
-      // ── Create Google Calendar event ────────────────────────────────────
       try {
         const bookingDate = parseDateString(booking.date);
         const bookingTime = parseTimeString(booking.time);
-        console.log(`📅 [Demo] Parsed date: ${bookingDate} | time: ${JSON.stringify(bookingTime)}`);
+        console.log(`📅 [Demo] Parsed: ${bookingDate} ${JSON.stringify(bookingTime)}`);
         if (!bookingDate) {
           console.error(`📅 [Demo] Could not parse date: "${booking.date}"`);
         } else {
           const startDT = new Date(bookingDate);
           startDT.setHours(bookingTime.hour, bookingTime.minute, 0, 0);
-          const endDT = new Date(startDT.getTime() + 60 * 60 * 1000);
-          const calAuth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET
-          );
-          calAuth.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
+          const endDT   = new Date(startDT.getTime() + 60 * 60 * 1000);
           if (!process.env.DEMO_GOOGLE_REFRESH_TOKEN) {
-            console.error('❌ [Demo] DEMO_GOOGLE_REFRESH_TOKEN is not set — cannot create calendar event');
-            return;
+            console.error('❌ [Demo] DEMO_GOOGLE_REFRESH_TOKEN not set — skipping calendar');
+          } else {
+            const calAuth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+            calAuth.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
+            const calendar   = google.calendar({ version: 'v3', auth: calAuth });
+            const calendarId = process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary';
+            const event = {
+              summary:     `Joe's Tree Services — ${booking.job}`,
+              description: `Phone: ${from}\nJob: ${booking.job}\nPostcode: ${booking.postcode}`,
+              start: { dateTime: startDT.toISOString(), timeZone: 'Europe/London' },
+              end:   { dateTime: endDT.toISOString(),   timeZone: 'Europe/London' },
+            };
+            console.log(`📅 [Demo] Inserting into "${calendarId}": ${JSON.stringify(event)}`);
+            const calResp = await calendar.events.insert({ calendarId, resource: event });
+            console.log(`✅ [Demo] Calendar event created: ${calResp.data.htmlLink}`);
           }
-          const calendar = google.calendar({ version: 'v3', auth: calAuth });
-          const calendarId = process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary';
-          const event = {
-            summary: `Joe's Tree Services — ${booking.job}`,
-            description: `Phone: ${from}\nJob: ${booking.job}\nPostcode: ${booking.postcode}`,
-            start: { dateTime: startDT.toISOString(), timeZone: 'Europe/London' },
-            end:   { dateTime: endDT.toISOString(),   timeZone: 'Europe/London' },
-          };
-          console.log(`📅 [Demo] Inserting into calendarId "${calendarId}": ${JSON.stringify(event)}`);
-          const calResp = await calendar.events.insert({ calendarId, resource: event });
-          console.log(`✅ [Demo] Calendar event created: ${calResp.data.htmlLink}`);
         }
       } catch (calErr) {
-        console.error(`❌ [Demo] Calendar creation failed: ${calErr.message}`, calErr.stack);
+        console.error(`❌ [Demo] Calendar failed: ${calErr.message}`, calErr.stack);
       }
     }
-
-    twiml.message(reply);
-    console.log(`â [Demo] Replied to ${from}: ${reply}`);
   } catch (err) {
-    console.error('â [Demo] Error:', err.message);
-    twiml.message(`Sorry, just give Joe a ring back when you get a chance.`);
+    console.error('❌ [Demo] handleSMS error:', err.message, err.stack);
+    await twilioClient.messages.create({ body: `Sorry, just give Joe a ring back when you get a chance.`, from: DEMO_FROM, to: from }).catch(() => {});
   }
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-// ââ Dashboard (PWA) âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+}
 
 app.get('/demo/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
@@ -402,15 +388,19 @@ app.post('/quote/:phone/submit', upload.single('photo'), async (req, res) => {
   }
 
   try {
+    console.log(`🔍 [Demo] assessImageData | apiKey:${!!process.env.ANTHROPIC_API_KEY} | mime:${mimeType} | b64len:${imageData.length}`);
     const assessment = await assessImageData(imageData, mimeType, caption || '');
-    console.log(`â [Demo] Assessment for ${phone}: ${assessment.slice(0, 80)}...`);
+    console.log(`✅ [Demo] Assessment for ${phone}: ${assessment.slice(0,120)}`);
     await twilioClient.messages.create({ body: assessment, from: DEMO_FROM, to: phone });
     addMessage(phone, 'assistant', assessment);
-    console.log(`â [Demo] Sent photo assessment to ${phone}`);
+    console.log(`✅ [Demo] Sent photo assessment to ${phone}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error(`â [Demo] Photo submit failed for ${phone}:`, err.message, err.stack);
-    res.status(500).json({ ok: false, error: 'Failed to process photo' });
+    console.error(`❌ [Demo] Photo failed for ${phone}:`, err.message);
+    console.error(`❌ [Demo] type:${err.constructor?.name} status:${err.status||err.statusCode||'?'} code:${err.code||'?'}`);
+    console.error(`❌ [Demo] full:`, JSON.stringify(err, Object.getOwnPropertyNames(err)));
+    console.error(`❌ [Demo] stack:`, err.stack);
+    res.status(500).json({ ok: false, error: err.message || 'Failed to process photo' });
   }
 });
 
@@ -438,6 +428,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 // ── Startup: log presence of calendar env vars ───────────────────────────────
 console.log('[Demo] DEMO_GOOGLE_REFRESH_TOKEN set:', !!process.env.DEMO_GOOGLE_REFRESH_TOKEN);
 console.log('[Demo] DEMO_GOOGLE_CALENDAR_ID    set:', !!process.env.DEMO_GOOGLE_CALENDAR_ID, process.env.DEMO_GOOGLE_CALENDAR_ID || '(missing)');
+console.log('[Demo] ANTHROPIC_API_KEY          set:', !!process.env.ANTHROPIC_API_KEY);
 
 const PORT = process.env.DEMO_PORT || 3002;
 app.listen(PORT, () => {
