@@ -426,6 +426,7 @@ app.post('/trigger-campaign', async (req, res) => {
 });
 
 // ── Hourly follow-up job ─────────────────────────────────────────────────────
+const COLD_FOLLOW_UP_MSG = "Hey, did you get my message the other day? Just wanted to make sure it didn't get lost 👍";
 const FOLLOW_UP_MSG = "Hey, just checking back in — still happy to jump on a quick call and show you how it works if you're interested. No pressure either way 👍";
 
 setInterval(async () => {
@@ -433,13 +434,14 @@ setInterval(async () => {
     const prospects = getProspectsNeedingFollowUp();
     console.log(`🔔 [Jake] Follow-up check: ${prospects.length} prospect(s) eligible`);
     for (const p of prospects) {
+      const hasReplied = getConversation(p.phone).some(m => m.role === 'user');
       try {
         await twilioClient.messages.create({
-          body: FOLLOW_UP_MSG,
+          body: hasReplied ? FOLLOW_UP_MSG : COLD_FOLLOW_UP_MSG,
           from: process.env.JAKE_PHONE_NUMBER,
           to: p.phone,
         });
-        addMessage(p.phone, 'assistant', FOLLOW_UP_MSG);
+        addMessage(p.phone, 'assistant', hasReplied ? FOLLOW_UP_MSG : COLD_FOLLOW_UP_MSG);
         markFollowUpSent(p.phone);
         console.log(`✅ [Jake] Follow-up sent to ${p.phone} (${p.name || 'unknown'})`);
       } catch (err) {
