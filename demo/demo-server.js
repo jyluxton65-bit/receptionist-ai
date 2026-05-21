@@ -44,8 +44,8 @@ const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
 const { assessImageData } = require('../ai');
 
 const app = express();
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Serve PWA static assets
 app.use('/demo/public', express.static(path.join(__dirname, 'public')));
@@ -184,8 +184,16 @@ app.post('/demo/sms-incoming', async (req, res) => {
           const startDT = new Date(bookingDate);
           startDT.setHours(bookingTime.hour, bookingTime.minute, 0, 0);
           const endDT = new Date(startDT.getTime() + 60 * 60 * 1000);
-          demoOauth2Client.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
-          const calendar = google.calendar({ version: 'v3', auth: demoOauth2Client });
+          const calAuth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET
+          );
+          calAuth.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
+          if (!process.env.DEMO_GOOGLE_REFRESH_TOKEN) {
+            console.error('❌ [Demo] DEMO_GOOGLE_REFRESH_TOKEN is not set — cannot create calendar event');
+            return;
+          }
+          const calendar = google.calendar({ version: 'v3', auth: calAuth });
           const calendarId = process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary';
           const event = {
             summary: `Joe's Tree Services — ${booking.job}`,
