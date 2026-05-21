@@ -2,7 +2,7 @@
  * demo-server.js
  *
  * Demo receptionist pre-configured for Joe's Tree Services, Didsbury.
- * Used during sales demos — prospects can text this number live during a call.
+ * Used during sales demos â prospects can text this number live during a call.
  *
  * Twilio webhook URLs to set on your demo number:
  *   Missed call (Voice):  POST https://YOUR-URL/demo/call-missed
@@ -24,6 +24,7 @@ const express    = require('express');
 const path       = require('path');
 const twilio     = require('twilio');
 const { google } = require('googleapis');
+const multer     = require('multer');
 
 const {
   addMessage,
@@ -37,7 +38,7 @@ const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
 const { assessImageData } = require('../ai');
 
 const app = express();
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 
 // Serve PWA static assets
@@ -50,11 +51,11 @@ const twilioClient = twilio(
 
 const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 
-// ── Missed call → instant text back ──────────────────────────────────────────
+// ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/call-missed', (req, res) => {
   const callerNumber = req.body.From;
 
-  // ⚡ Send TwiML IMMEDIATELY — Twilio times out after ~5s if we await first
+  // â¡ Send TwiML IMMEDIATELY â Twilio times out after ~5s if we await first
   const twiml = new twilio.twiml.VoiceResponse();
   twiml.pause({ length: 1 });
   twiml.say({ voice: 'alice', language: 'en-GB' },
@@ -64,17 +65,17 @@ app.post('/demo/call-missed', (req, res) => {
   res.type('text/xml');
   res.send(twiml.toString());
 
-  // 📱 Send SMS async AFTER TwiML is already on the wire
+  // ð± Send SMS async AFTER TwiML is already on the wire
   const opener = `Hi, it's Joe from Joe's Tree Services. Sorry I missed your call, I'm on a job right now. What was it you were after? I'll get back to you as soon as I can.`;
     // Initialise session sync so reply texts always find a valid session
   addMessage(callerNumber, 'assistant', opener);
 
   twilioClient.messages.create({ body: opener, from: DEMO_FROM, to: callerNumber })
-    .then(() => console.log(`✅ [Demo] Sent opener to ${callerNumber}`))
-    .catch(err => console.error('❌ [Demo] SMS failed:', err.message));
+    .then(() => console.log(`â [Demo] Sent opener to ${callerNumber}`))
+    .catch(err => console.error('â [Demo] SMS failed:', err.message));
 });
 
-// ── Inbound SMS ───────────────────────────────────────────────────────────────
+// ââ Inbound SMS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/demo/sms-incoming', async (req, res) => {
   // Guard: ignore voice webhooks accidentally pointed here
   if (req.body.CallSid) {
@@ -86,7 +87,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   const body  = req.body.Body?.trim() || '';
   const twiml = new twilio.twiml.MessagingResponse();
 
-  console.log(`📨 [Demo] SMS from ${from}: ${body}`);
+  console.log(`ð¨ [Demo] SMS from ${from}: ${body}`);
 
   // Allow demo reset via special keyword
   if (body.toLowerCase() === 'reset demo') {
@@ -99,12 +100,12 @@ app.post('/demo/sms-incoming', async (req, res) => {
   // Always store the incoming message in history so context is preserved
   addMessage(from, 'user', body);
 
-  // PAUSED: bot stays silent — returns empty TwiML.
+  // PAUSED: bot stays silent â returns empty TwiML.
   // If Twilio SMS forwarding is configured on this number, the arborist's
   // personal phone receives the message as a normal text and can reply directly.
   // History is maintained so the bot resumes seamlessly on RESUME.
   if (isPaused()) {
-    console.log(`⏸️  [Demo] PAUSED — storing message from ${from} but not replying`);
+    console.log(`â¸ï¸  [Demo] PAUSED â storing message from ${from} but not replying`);
     res.type('text/xml');
     return res.send(twiml.toString()); // empty TwiML = no bot reply
   }
@@ -124,19 +125,19 @@ app.post('/demo/sms-incoming', async (req, res) => {
     if ((mentionedPhoto && numMedia === 0) || botCantSee) {
       const baseUrl    = process.env.BASE_URL || 'https://receptionist-ai-production-1c42.up.railway.app';
       const uploadLink = baseUrl + '/quote-upload.html?phone=' + encodeURIComponent(from);
-      reply = 'Still not getting the photo through \u2014 happens sometimes with texts. Here\u2019s a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
+      reply = 'Still not getting the photo through â happens sometimes with texts. Hereâs a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
     }
 
     addMessage(from, 'assistant', reply);
 
     if (booking) {
-      console.log(`📅 [Demo] Booking detected: ${JSON.stringify(booking)}`);
+      console.log(`ð [Demo] Booking detected: ${JSON.stringify(booking)}`);
     }
 
     twiml.message(reply);
-    console.log(`✅ [Demo] Replied to ${from}: ${reply}`);
+    console.log(`â [Demo] Replied to ${from}: ${reply}`);
   } catch (err) {
-    console.error('❌ [Demo] Error:', err.message);
+    console.error('â [Demo] Error:', err.message);
     twiml.message(`Sorry, just give Joe a ring back when you get a chance.`);
   }
 
@@ -144,7 +145,7 @@ app.post('/demo/sms-incoming', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// ── Dashboard (PWA) ───────────────────────────────────────────────────────────
+// ââ Dashboard (PWA) âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 app.get('/demo/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
@@ -156,13 +157,13 @@ app.get('/demo/status', (req, res) => {
 
 app.post('/demo/pause', (req, res) => {
   setPaused(true);
-  console.log('⏸️  [Demo] Bot PAUSED via dashboard');
+  console.log('â¸ï¸  [Demo] Bot PAUSED via dashboard');
   res.json({ ok: true, paused: true });
 });
 
 app.post('/demo/resume', (req, res) => {
   setPaused(false);
-  console.log('▶️  [Demo] Bot RESUMED via dashboard');
+  console.log('â¶ï¸  [Demo] Bot RESUMED via dashboard');
   res.json({ ok: true, paused: false });
 });
 
@@ -174,7 +175,7 @@ app.get('/demo/conversations/:phone', (req, res) => {
   res.json(getConversation(decodeURIComponent(req.params.phone)));
 });
 
-// Manual send — arborist replies from the dashboard
+// Manual send â arborist replies from the dashboard
 app.post('/demo/send', async (req, res) => {
   const { to, message } = req.body;
   if (!to || !message) return res.status(400).json({ error: 'to and message required' });
@@ -182,15 +183,15 @@ app.post('/demo/send', async (req, res) => {
   try {
     await twilioClient.messages.create({ body: message, from: DEMO_FROM, to });
     addMessage(to, 'assistant', message);
-    console.log(`✅ [Demo] Manual send to ${to}: ${message}`);
+    console.log(`â [Demo] Manual send to ${to}: ${message}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error('❌ [Demo] Send failed:', err.message);
+    console.error('â [Demo] Send failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delay — push today's remaining Google Calendar events back and text customers
+// Delay â push today's remaining Google Calendar events back and text customers
 app.post('/demo/delay', async (req, res) => {
   const { minutes } = req.body;
   if (!minutes || isNaN(minutes) || parseInt(minutes) < 1) {
@@ -243,15 +244,15 @@ app.post('/demo/delay', async (req, res) => {
         const newTimeStr = newStart.toLocaleTimeString('en-GB', {
           hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London',
         });
-        const msg = `Hi, it's Joe. Running about ${minutes} mins behind today — your appointment is now at ${newTimeStr}. Sorry for the inconvenience.`;
+        const msg = `Hi, it's Joe. Running about ${minutes} mins behind today â your appointment is now at ${newTimeStr}. Sorry for the inconvenience.`;
 
         try {
           await twilioClient.messages.create({ body: msg, from: DEMO_FROM, to: phone });
           addMessage(phone, 'assistant', msg);
           affected.push({ phone, newTime: newTimeStr, event: event.summary });
-          console.log(`📅 [Demo] Pushed "${event.summary}" to ${newTimeStr}, texted ${phone}`);
+          console.log(`ð [Demo] Pushed "${event.summary}" to ${newTimeStr}, texted ${phone}`);
         } catch (smsErr) {
-          console.error(`❌ [Demo] SMS to ${phone} failed:`, smsErr.message);
+          console.error(`â [Demo] SMS to ${phone} failed:`, smsErr.message);
           affected.push({ phone, newTime: newTimeStr, event: event.summary, smsError: smsErr.message });
         }
       } else {
@@ -261,50 +262,80 @@ app.post('/demo/delay', async (req, res) => {
 
     res.json({ ok: true, delayed: events.length, minutes: parseInt(minutes), affected });
   } catch (err) {
-    console.error('❌ [Demo] Delay failed:', err.message);
+    console.error('â [Demo] Delay failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// ââ Photo upload submission âââââââââââââââââââââââââââââââââââââââââââââââââ
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
-// ── Photo upload submission ─────────────────────────────────────────────────
-app.post('/quote/:phone/submit', async (req, res) => {
-  const phone  = decodeURIComponent(req.params.phone);
-  const { imageData, mimeType, caption } = req.body;
+// CORS preflight for upload endpoint
+app.options('/quote/:phone/submit', (req, res) => {
+  res.set({
+    'Access-Control-Allow-Origin':  '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  });
+  res.sendStatus(200);
+});
 
-  console.log(`📸 [Demo] Photo upload from ${phone} | type: ${mimeType} | size: ${imageData ? imageData.length : 0} chars | caption: "${caption || '(none)'}"`);
+app.post('/quote/:phone/submit', upload.single('photo'), async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+
+  const phone = decodeURIComponent(req.params.phone);
+  console.log(`ð¸ [Demo] Upload attempt from ${phone}`);
+  console.log(`ð¸ [Demo] Content-Type: ${req.headers['content-type']}`);
+  console.log(`ð¸ [Demo] Body keys: ${Object.keys(req.body || {}).join(', ')}`);
+  console.log(`ð¸ [Demo] File attached: ${req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'none'}`);
+
+  let imageData, mimeType, caption;
+
+  if (req.file) {
+    // Multipart form upload â convert buffer to base64
+    imageData = req.file.buffer.toString('base64');
+    mimeType  = req.file.mimetype;
+    caption   = req.body.caption || '';
+    console.log(`ð¸ [Demo] Multipart: ${req.file.originalname}, ${req.file.size} bytes, type: ${mimeType}`);
+  } else {
+    // JSON body â imageData already base64
+    ({ imageData, mimeType, caption } = req.body);
+    console.log(`ð¸ [Demo] JSON body | type: ${mimeType} | size: ${imageData ? imageData.length : 0} chars | caption: "${caption || '(none)'}"`);
+  }
 
   if (!imageData || !mimeType) {
-    console.error('❌ [Demo] Photo upload missing imageData or mimeType');
+    console.error(`â [Demo] Missing imageData or mimeType for ${phone}`);
     return res.status(400).json({ ok: false, error: 'Missing imageData or mimeType' });
   }
 
   try {
     const assessment = await assessImageData(imageData, mimeType, caption || '');
-    console.log(`✅ [Demo] Assessment for ${phone}: ${assessment.slice(0, 80)}...`);
-
+    console.log(`â [Demo] Assessment for ${phone}: ${assessment.slice(0, 80)}...`);
     await twilioClient.messages.create({ body: assessment, from: DEMO_FROM, to: phone });
     addMessage(phone, 'assistant', assessment);
-    console.log(`✅ [Demo] Sent photo assessment to ${phone}`);
-
+    console.log(`â [Demo] Sent photo assessment to ${phone}`);
     res.json({ ok: true });
   } catch (err) {
-    console.error(`❌ [Demo] Photo submit failed for ${phone}:`, err.message);
+    console.error(`â [Demo] Photo submit failed for ${phone}:`, err.message, err.stack);
     res.status(500).json({ ok: false, error: 'Failed to process photo' });
   }
 });
+
+// ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.DEMO_PORT || 3002;
 app.listen(PORT, () => {
   console.log(`
-🌳 Joe's Tree Services — Demo Receptionist
-🚀 Running on port ${PORT}
-📞 Missed call webhook → POST /demo/call-missed
-📱 SMS webhook         → POST /demo/sms-incoming
-📊 Dashboard (PWA)     → GET  /demo/dashboard
-💡 Text "reset demo" to any number to clear its conversation
+ð³ Joe's Tree Services â Demo Receptionist
+ð Running on port ${PORT}
+ð Missed call webhook â POST /demo/call-missed
+ð± SMS webhook        â POST /demo/sms-incoming
+ð Dashboard (PWA)    â GET  /demo/dashboard
+ð¡ Text "reset demo" to any number to clear its conversation
   `);
 });
 
