@@ -58,6 +58,41 @@ const twilioClient = twilio(
 const DEMO_FROM = process.env.DEMO_PHONE_NUMBER;
 
 // ââ Missed call â instant text back ââââââââââââââââââââââââââââââââââââââââââ
+// ── Booking date/time parsers ───────────────────────────────────────────
+function parseDateString(dateStr) {
+  const direct = new Date(dateStr);
+  if (!isNaN(direct)) return direct;
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const lower = dateStr.toLowerCase();
+  const isNext = lower.includes('next');
+  for (let i = 0; i < days.length; i++) {
+    if (lower.includes(days[i])) {
+      const now = new Date();
+      let diff = i - now.getDay();
+      if (diff <= 0 || isNext) diff += 7;
+      const target = new Date(now);
+      target.setDate(now.getDate() + diff);
+      return target;
+    }
+  }
+  return null;
+}
+
+function parseTimeString(timeStr) {
+  const lower = (timeStr || '').toLowerCase().trim();
+  if (lower === 'morning')   return { hour: 9,  minute: 0 };
+  if (lower === 'afternoon') return { hour: 14, minute: 0 };
+  if (lower === 'evening')   return { hour: 17, minute: 0 };
+  const m = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (m) {
+    let hour = parseInt(m[1]);
+    const minute = m[2] ? parseInt(m[2]) : 0;
+    if (m[3] === 'pm' && hour < 12) hour += 12;
+    if (m[3] === 'am' && hour === 12) hour = 0;
+    return { hour, minute };
+  }
+  return { hour: 9, minute: 0 };
+}
 app.post('/demo/call-missed', (req, res) => {
   const callerNumber = req.body.From;
 
@@ -137,7 +172,34 @@ app.post('/demo/sms-incoming', async (req, res) => {
     addMessage(from, 'assistant', reply);
 
     if (booking) {
-      console.log(`ð [Demo] Booking detected: ${JSON.stringify(booking)}`);
+      console.log(`📅 [Demo] Booking detected: ${JSON.stringify(booking)}`);
+      // ── Create Google Calendar event ────────────────────────────────────
+      try {
+        const bookingDate = parseDateString(booking.date);
+        const bookingTime = parseTimeString(booking.time);
+        console.log(`📅 [Demo] Parsed date: ${bookingDate} | time: ${JSON.stringify(bookingTime)}`);
+        if (!bookingDate) {
+          console.error(`📅 [Demo] Could not parse date: "${booking.date}"`);
+        } else {
+          const startDT = new Date(bookingDate);
+          startDT.setHours(bookingTime.hour, bookingTime.minute, 0, 0);
+          const endDT = new Date(startDT.getTime() + 60 * 60 * 1000);
+          demoOauth2Client.setCredentials({ refresh_token: process.env.DEMO_GOOGLE_REFRESH_TOKEN });
+          const calendar = google.calendar({ version: 'v3', auth: demoOauth2Client });
+          const calendarId = process.env.DEMO_GOOGLE_CALENDAR_ID || 'primary';
+          const event = {
+            summary: `Joe's Tree Services — ${booking.job}`,
+            description: `Phone: ${from}\nJob: ${booking.job}\nPostcode: ${booking.postcode}`,
+            start: { dateTime: startDT.toISOString(), timeZone: 'Europe/London' },
+            end:   { dateTime: endDT.toISOString(),   timeZone: 'Europe/London' },
+          };
+          console.log(`📅 [Demo] Inserting into calendarId "${calendarId}": ${JSON.stringify(event)}`);
+          const calResp = await calendar.events.insert({ calendarId, resource: event });
+          console.log(`✅ [Demo] Calendar event created: ${calResp.data.htmlLink}`);
+        }
+      } catch (calErr) {
+        console.error(`❌ [Demo] Calendar creation failed: ${calErr.message}`, calErr.stack);
+      }
     }
 
     twiml.message(reply);
