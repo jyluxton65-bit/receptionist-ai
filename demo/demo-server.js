@@ -26,6 +26,12 @@ const twilio     = require('twilio');
 const { google } = require('googleapis');
 const multer     = require('multer');
 
+const demoOauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'https://receptionist-ai-production-1c42.up.railway.app/demo/save-token'
+);
+
 const {
   addMessage,
   getConversation,
@@ -322,6 +328,23 @@ app.post('/quote/:phone/submit', upload.single('photo'), async (req, res) => {
     console.error(`â [Demo] Photo submit failed for ${phone}:`, err.message, err.stack);
     res.status(500).json({ ok: false, error: 'Failed to process photo' });
   }
+});
+
+// ââ Google re-auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+app.get('/demo/reauth-google', (req, res) => {
+  const authUrl = demoOauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/calendar'],
+  });
+  res.redirect(authUrl);
+});
+
+app.get('/demo/save-token', async (req, res) => {
+  const { code } = req.query;
+  const { tokens } = await demoOauth2Client.getToken(code);
+  res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> â copy this into your GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
 
 // ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
