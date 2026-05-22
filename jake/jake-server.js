@@ -491,24 +491,33 @@ app.get('/test-calendar', async (req, res) => {
           res.json({ status: 'FAILED', error: err.message });
     }
 });
-// ── One-time 09:30 London campaign (Yellow_Batch_2) ──────────────────────────
+// ── One-time 11:00 London campaign Monday (Yellow_Batch_2) ────────────────────
 (function scheduleYellowBatch2() {
   const csvPath = path.join(__dirname, 'contacts.csv');
   const now = new Date();
+  // Find next Monday in London time
+  const londonNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+  const dayOfWeek = londonNow.getDay(); // 0=Sun,1=Mon,...,6=Sat
+  const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
   const londonDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
+  const [y, m, d] = londonDate.split('-').map(Number);
+  const monDate = new Date(y, m - 1, d + daysUntilMonday);
+  const yyyy = monDate.getFullYear();
+  const mm = String(monDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(monDate.getDate()).padStart(2, '0');
   const utcMs = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
   const lonMs = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' })).getTime();
   const offsetMs = lonMs - utcMs;
-  const targetLondon = new Date(londonDate + 'T09:30:00');
+  const targetLondon = new Date(yyyy + '-' + mm + '-' + dd + 'T11:00:00');
   const targetUTC = new Date(targetLondon.getTime() - offsetMs);
   const delay = targetUTC.getTime() - Date.now();
   if (delay <= 0) {
-    console.log('[Jake] 09:30 Yellow_Batch_2 send already passed, skipping');
+    console.log('[Jake] Monday 11:00 Yellow_Batch_2 send already passed, skipping');
     return;
   }
-  console.log('[Jake] Scheduled Yellow_Batch_2 for 09:30 London — fires in ' + Math.round(delay / 60000) + ' min');
+  console.log('[Jake] Scheduled Yellow_Batch_2 for Monday 11:00 London — fires in ' + Math.round(delay / 60000) + ' min');
   setTimeout(async () => {
-    console.log('[Jake] Firing 09:30 Yellow_Batch_2 campaign');
+    console.log('[Jake] Firing Monday 11:00 Yellow_Batch_2 campaign');
     try {
       await runCampaign(csvPath);
     } catch (err) {
