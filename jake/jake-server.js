@@ -491,4 +491,30 @@ app.get('/test-calendar', async (req, res) => {
           res.json({ status: 'FAILED', error: err.message });
     }
 });
+// ── One-time 09:30 London campaign (Yellow_Batch_2) ──────────────────────────
+(function scheduleYellowBatch2() {
+  const csvPath = path.join(__dirname, 'contacts.csv');
+  const now = new Date();
+  const londonDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
+  const utcMs = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
+  const lonMs = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' })).getTime();
+  const offsetMs = lonMs - utcMs;
+  const targetLondon = new Date(londonDate + 'T09:30:00');
+  const targetUTC = new Date(targetLondon.getTime() - offsetMs);
+  const delay = targetUTC.getTime() - Date.now();
+  if (delay <= 0) {
+    console.log('[Jake] 09:30 Yellow_Batch_2 send already passed, skipping');
+    return;
+  }
+  console.log('[Jake] Scheduled Yellow_Batch_2 for 09:30 London — fires in ' + Math.round(delay / 60000) + ' min');
+  setTimeout(async () => {
+    console.log('[Jake] Firing 09:30 Yellow_Batch_2 campaign');
+    try {
+      await runCampaign(csvPath);
+    } catch (err) {
+      console.error('[Jake] Scheduled campaign error:', err.message);
+    }
+  }, delay);
+})();
+
 module.exports = app;
