@@ -493,38 +493,29 @@ app.get('/test-calendar', async (req, res) => {
     }
 });
 // ── One-time 11:00 London campaign Monday (Yellow_Batch_2) ────────────────────
-(function scheduleYellowBatch2() {
-  const csvPath = path.join(__dirname, 'contacts.csv');
-  const now = new Date();
-  // Find next Monday in London time
-  const londonNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' }));
-  const dayOfWeek = londonNow.getDay(); // 0=Sun,1=Mon,...,6=Sat
-  const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
-  const londonDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
-  const [y, m, d] = londonDate.split('-').map(Number);
-  const monDate = new Date(y, m - 1, d + daysUntilMonday);
-  const yyyy = monDate.getFullYear();
-  const mm = String(monDate.getMonth() + 1).padStart(2, '0');
-  const dd = String(monDate.getDate()).padStart(2, '0');
-  const utcMs = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
-  const lonMs = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' })).getTime();
-  const offsetMs = lonMs - utcMs;
-  const targetLondon = new Date(yyyy + '-' + mm + '-' + dd + 'T11:00:00');
-  const targetUTC = new Date(targetLondon.getTime() - offsetMs);
-  const delay = targetUTC.getTime() - Date.now();
-  if (delay <= 0) {
-    console.log('[Jake] Monday 11:00 Yellow_Batch_2 send already passed, skipping');
-    return;
-  }
-  console.log('[Jake] Scheduled Yellow_Batch_2 for Monday 11:00 London — fires in ' + Math.round(delay / 60000) + ' min');
-  setTimeout(async () => {
-    console.log('[Jake] Firing Monday 11:00 Yellow_Batch_2 campaign');
+// ── Scheduled batch campaigns (node-cron) ────────────────────────────────────────
+const cron = require('node-cron');
+const fs   = require('fs');
+
+function runBatchOnce(cronExpr, batchCsv, label) {
+  console.log('[Jake] Scheduled ' + label + ' — ' + cronExpr + ' (Europe/London)');
+  const task = cron.schedule(cronExpr, async () => {
+    console.log('[Jake] Firing ' + label);
+    task.stop();
     try {
-      await runCampaign(csvPath);
+      const src  = path.join(__dirname, batchCsv);
+      const dest = path.join(__dirname, 'contacts.csv');
+      fs.copyFileSync(src, dest);
+      await runCampaign(dest);
     } catch (err) {
-      console.error('[Jake] Scheduled campaign error:', err.message);
+      console.error('[Jake] ' + label + ' error:', err.message);
     }
-  }, delay);
-})();
+  }, { timezone: 'Europe/London' });
+}
+
+runBatchOnce('4 12 * * 2',  'yellow_batch_3_clean.csv', 'Yellow_Batch_3 Tue 12:04');
+runBatchOnce('7 11 * * 3',  'green_batch_4_clean.csv',  'Green_Batch_4 Wed 11:07');
+runBatchOnce('7 14 * * 4',  'green_batch_5_clean.csv',  'Green_Batch_5 Thu 14:07');
+runBatchOnce('23 10 * * 5', 'yellow_batch_6_clean.csv', 'Yellow_Batch_6 Fri 10:23');
 
 module.exports = app;
