@@ -11,6 +11,7 @@
     "@anthropic-ai/sdk": "^0.24.0",
     "axios": "^1.7.2",
     "better-sqlite3": "^9.6.0",
+    "node-cron": "^3.0.0",
     "cookie-session": "^2.1.0",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",
