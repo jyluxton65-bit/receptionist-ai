@@ -156,6 +156,7 @@ const msgQueues = {}; // per-phone queue — prevents double-handling
 app.post('/incoming', (req, res) => {
   const from = req.body.From;
   const body = req.body.Body?.trim() || '';
+  if (!body) return res.sendStatus(200);
 
   // Respond to Twilio immediately — prevents webhook timeout on slow AI responses
   res.type('text/xml');
