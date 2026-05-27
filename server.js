@@ -5,7 +5,7 @@ const twilio = require('twilio');
 const path = require('path');
 const cookieSession = require('cookie-session');
 
-const { getConversation, addMessage, clearConversation, getSetting } = require('./db');
+const { getConversation, addMessage, clearConversation, getSetting, setSetting } = require('./db');
 const { getAIReply, parseBooking, cleanReply, assessImage } = require('./ai');
 const { bookEvent } = require('./calendar');
 const { calculateCalloutFee, extractPostcode } = require('./postcode');
