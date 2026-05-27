@@ -162,6 +162,12 @@ app.post('/demo/sms-incoming', (req, res) => {
   next.finally(() => { if (phoneQueues.get(from) === next) phoneQueues.delete(from); });
 });
 
+// ── Typing delay (simulates human response time) ──────────────────────────────
+function typingDelay() {
+  const ms = Math.floor(20000 + Math.random() * 25000); // 20–45 seconds
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function handleSMS(from, body, reqBody) {
   if (body.toLowerCase() === 'reset demo') {
     clearConversation(from);
@@ -187,6 +193,7 @@ async function handleSMS(from, body, reqBody) {
       reply = 'Still not getting the photo through — happens sometimes with texts. Here\'s a quick link to send it instead, takes 30 seconds: ' + uploadLink + '\n\nAnd can you let me know your postcode so I can check if we cover your area?';
     }
     addMessage(from, 'assistant', reply);
+    await typingDelay();
     await twilioClient.messages.create({ body: reply, from: DEMO_FROM, to: from });
     console.log(`✅ [Demo] Replied to ${from}: ${reply.slice(0, 80)}`);
     if (booking) {
@@ -225,6 +232,7 @@ async function handleSMS(from, body, reqBody) {
     }
   } catch (err) {
     console.error('❌ [Demo] handleSMS error:', err.message, err.stack);
+    await typingDelay();
     await twilioClient.messages.create({ body: `Sorry, just give Joe a ring back when you get a chance.`, from: DEMO_FROM, to: from }).catch(() => {});
   }
 }
@@ -440,6 +448,7 @@ app.post('/quote/:phone/submit', upload.single('photo'), async (req, res) => {
     console.log(`🔍 [Demo] assessImageData | apiKey:${!!process.env.ANTHROPIC_API_KEY} | mime:${mimeType} | b64len:${imageData.length}`);
     const assessment = await assessImageData(imageData, mimeType, caption || '');
     console.log(`✅ [Demo] Assessment for ${phone}: ${assessment.slice(0,120)}`);
+    await typingDelay();
     await twilioClient.messages.create({ body: assessment, from: DEMO_FROM, to: phone });
     addMessage(phone, 'assistant', assessment);
     console.log(`✅ [Demo] Sent photo assessment to ${phone}`);
