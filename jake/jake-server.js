@@ -153,6 +153,12 @@ function parseJakeDatetime(dateStr, timeStr) {
 // ── Inbound reply from a prospect ────────────────────────────────────────────
 const msgQueues = {}; // per-phone queue — prevents double-handling
 
+// ── Typing delay (simulates human response time) ──────────────────────────────
+function typingDelay() {
+  const ms = Math.floor(20000 + Math.random() * 25000); // 20–45 seconds
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 app.post('/incoming', (req, res) => {
   const from = req.body.From;
   if (from === process.env.JAKE_PHONE_NUMBER) return res.sendStatus(200);
@@ -198,6 +204,7 @@ app.post('/incoming', (req, res) => {
         markBooked(from);
       }
 
+      await typingDelay();
       await twilioClient.messages.create({
         body: reply,
         from: JAKE_FROM,
