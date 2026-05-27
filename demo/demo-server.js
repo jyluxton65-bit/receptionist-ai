@@ -250,29 +250,54 @@ app.post('/demo/resume', (req, res) => {
 });
 
 app.get('/demo/conversations', (req, res) => {
-  const convs = mainGetRecentConversations(20).map(c => ({
-    phone: c.phone,
-    updated_at: c.last_message,
-    messages: getConversationHistory(c.phone, 100),
-  }));
-  res.json(convs);
+  try {
+    const convs = mainGetRecentConversations(20).map(c => ({
+      phone: c.phone,
+      updated_at: c.last_message,
+      messages: getConversationHistory(c.phone, 100),
+    }));
+    console.log('[Demo] GET /demo/conversations → ' + convs.length + ' convs');
+    res.json(convs);
+  } catch (err) {
+    console.error('[Demo] GET /demo/conversations ERROR:', err.message);
+    res.status(500).json([]);
+  }
 });
 
 app.get('/demo/conversations/:phone', (req, res) => {
-  res.json(getConversationHistory(decodeURIComponent(req.params.phone)));
+  try {
+    const msgs = getConversationHistory(decodeURIComponent(req.params.phone));
+    console.log('[Demo] GET /demo/conversations/:phone → ' + msgs.length + ' msgs');
+    res.json(msgs);
+  } catch (err) {
+    console.error('[Demo] GET /demo/conversations/:phone ERROR:', err.message);
+    res.status(500).json([]);
+  }
 });
 
 // Fix 2: photo quote list and image routes for dashboard
 app.get('/demo/api/photo-quotes', (req, res) => {
-  res.json(getRecentPhotoQuotes(50));
+  try {
+    const photos = getRecentPhotoQuotes(50);
+    console.log('[Demo] GET /demo/api/photo-quotes → ' + photos.length + ' photos');
+    res.json(photos);
+  } catch (err) {
+    console.error('[Demo] GET /demo/api/photo-quotes ERROR:', err.message);
+    res.status(500).json([]);
+  }
 });
 
 app.get('/demo/api/photo-quotes/:id/image', (req, res) => {
-  const row = getQuoteRequest(req.params.id);
-  if (!row || !row.image_data) return res.status(404).end();
-  const buf = Buffer.from(row.image_data, 'base64');
-  res.setHeader('Content-Type', row.image_mime || 'image/jpeg');
-  res.send(buf);
+  try {
+    const row = getQuoteRequest(req.params.id);
+    if (!row || !row.image_data) return res.status(404).end();
+    const buf = Buffer.from(row.image_data, 'base64');
+    res.setHeader('Content-Type', row.image_mime || 'image/jpeg');
+    res.send(buf);
+  } catch (err) {
+    console.error('[Demo] GET /demo/api/photo-quotes/:id/image ERROR:', err.message);
+    res.status(500).end();
+  }
 });
 
 // Manual send â arborist replies from the dashboard
