@@ -10,24 +10,24 @@ const db = new Database(path.join(DATA_DIR, 'jake.db'));
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS jake_messages (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone      TEXT NOT NULL,
-  role       TEXT NOT NULL,
-  body       TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone TEXT NOT NULL,
+  role TEXT NOT NULL,
+  body TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_jake_phone ON jake_messages(phone);
 
 CREATE TABLE IF NOT EXISTS jake_prospects (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  phone           TEXT UNIQUE NOT NULL,
-  name            TEXT,
-  business        TEXT,
-  status          TEXT DEFAULT 'pending',
-  sent_at         DATETIME,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone TEXT UNIQUE NOT NULL,
+  name TEXT,
+  business TEXT,
+  status TEXT DEFAULT 'pending',
+  sent_at DATETIME,
   last_message_at DATETIME,
-  follow_up_sent  INTEGER DEFAULT 0,
-  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+  follow_up_sent INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `);
 
@@ -77,6 +77,15 @@ function markBooked(phone) {
   db.prepare(`UPDATE jake_prospects SET status = 'booked' WHERE phone = ?`).run(phone);
 }
 
+function markClosed(phone) {
+  db.prepare(`UPDATE jake_prospects SET status = 'closed' WHERE phone = ?`).run(phone);
+}
+
+function isClosed(phone) {
+  const row = db.prepare(`SELECT status FROM jake_prospects WHERE phone = ?`).get(phone);
+  return row?.status === 'closed';
+}
+
 function getProspects(status = null) {
   if (status) {
     return db.prepare('SELECT * FROM jake_prospects WHERE status = ? ORDER BY created_at DESC').all(status);
@@ -101,12 +110,12 @@ function getProspectsNeedingFollowUp() {
   return db.prepare(`
     SELECT * FROM jake_prospects
     WHERE status = 'sent'
-      AND follow_up_sent = 0
-      AND (
-        last_message_at IS NULL AND sent_at <= datetime('now', '-3 days')
-        OR
-        last_message_at <= datetime('now', '-3 days')
-      )
+    AND follow_up_sent = 0
+    AND (
+      last_message_at IS NULL AND sent_at <= datetime('now', '-3 days')
+      OR
+      last_message_at <= datetime('now', '-3 days')
+    )
   `).all();
 }
 
@@ -123,6 +132,8 @@ module.exports = {
   upsertProspect,
   markSent,
   markBooked,
+  markClosed,
+  isClosed,
   getProspects,
   resetConversation,
   updateLastMessageAt,
