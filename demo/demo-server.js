@@ -42,6 +42,12 @@ const {
   isPaused,
   setPaused,
 } = require('./demo-db');
+const {
+  getRecentConversations: mainGetRecentConversations,
+  getConversationHistory,
+  getRecentPhotoQuotes,
+  getQuoteRequest,
+} = require('../db');
 const { getDemoReply, parseBooking, cleanReply } = require('./demo-ai');
 const { assessImageData } = require('../ai');
 
@@ -244,11 +250,29 @@ app.post('/demo/resume', (req, res) => {
 });
 
 app.get('/demo/conversations', (req, res) => {
-  res.json(getRecentConversations(20));
+  const convs = mainGetRecentConversations(20).map(c => ({
+    phone: c.phone,
+    updated_at: c.last_message,
+    messages: getConversationHistory(c.phone, 100),
+  }));
+  res.json(convs);
 });
 
 app.get('/demo/conversations/:phone', (req, res) => {
-  res.json(getConversation(decodeURIComponent(req.params.phone)));
+  res.json(getConversationHistory(decodeURIComponent(req.params.phone)));
+});
+
+// Fix 2: photo quote list and image routes for dashboard
+app.get('/demo/api/photo-quotes', (req, res) => {
+  res.json(getRecentPhotoQuotes(50));
+});
+
+app.get('/demo/api/photo-quotes/:id/image', (req, res) => {
+  const row = getQuoteRequest(req.params.id);
+  if (!row || !row.image_data) return res.status(404).end();
+  const buf = Buffer.from(row.image_data, 'base64');
+  res.setHeader('Content-Type', row.image_mime || 'image/jpeg');
+  res.send(buf);
 });
 
 // Manual send â arborist replies from the dashboard
