@@ -1,8 +1,8 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const path = require('path');
 
-const express  = require('express');
-const twilio   = require('twilio');
+const express = require('express');
+const twilio = require('twilio');
 const { google } = require('googleapis');
 
 const oauth2Client = new google.auth.OAuth2(
@@ -22,8 +22,7 @@ const {
   resetConversation,
 } = require('./jake-db');
 const { runCampaign } = require('./send-campaign');
-const { updateLastMessageAt, getProspectsNeedingFollowUp, markFollowUpSent } = require('./jake-db');
-
+const { updateLastMessageAt, getProspectsNeedingFollowUp, markFollowUpSent, markClosed, isClosed } = require('./jake-db');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -31,18 +30,18 @@ app.use(express.json());
 
 const twilioClient = twilio(
   process.env.JAKE_TWILIO_ACCOUNT_SID || process.env.TWILIO_ACCOUNT_SID,
-  process.env.JAKE_TWILIO_AUTH_TOKEN  || process.env.TWILIO_AUTH_TOKEN
+  process.env.JAKE_TWILIO_AUTH_TOKEN || process.env.TWILIO_AUTH_TOKEN
 );
 
 const JAKE_FROM = process.env.JAKE_PHONE_NUMBER;
 
 // ── Google OAuth startup diagnostics ─────────────────────────────────────────
 console.log('\n🔑 [Jake] Google OAuth env check:');
-console.log('  GOOGLE_CLIENT_ID:     ', process.env.GOOGLE_CLIENT_ID     ? '✅ present' : '❌ MISSING');
-console.log('  GOOGLE_CLIENT_SECRET: ', process.env.GOOGLE_CLIENT_SECRET ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_CLIENT_ID:          ', process.env.GOOGLE_CLIENT_ID ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_CLIENT_SECRET:      ', process.env.GOOGLE_CLIENT_SECRET ? '✅ present' : '❌ MISSING');
 console.log('  JAKE_GOOGLE_REFRESH_TOKEN: ', process.env.JAKE_GOOGLE_REFRESH_TOKEN ? '✅ present' : '❌ MISSING');
-console.log('  JAKE_GOOGLE_CALENDAR_ID:   ', process.env.JAKE_GOOGLE_CALENDAR_ID   ? '✅ present' : '❌ MISSING');
-console.log('  GOOGLE_REDIRECT_URI:  ', process.env.GOOGLE_REDIRECT_URI  ? '✅ present' : '❌ MISSING');
+console.log('  JAKE_GOOGLE_CALENDAR_ID:   ', process.env.JAKE_GOOGLE_CALENDAR_ID ? '✅ present' : '❌ MISSING');
+console.log('  GOOGLE_REDIRECT_URI:       ', process.env.GOOGLE_REDIRECT_URI ? '✅ present' : '❌ MISSING');
 
 // Quick OAuth token check
 try {
@@ -54,14 +53,13 @@ try {
   );
   _auth.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
   _auth.getAccessToken().then(({ token }) => {
-    console.log('  Access token fetch:  ', token ? '✅ success (token starts: ' + token.substring(0, 20) + '...)' : '❌ returned null');
+    console.log('  Access token fetch: ', token ? '✅ success (token starts: ' + token.substring(0, 20) + '...)' : '❌ returned null');
   }).catch(err => {
-    console.log('  Access token fetch:  ❌ FAILED —', err.message);
+    console.log('  Access token fetch: ❌ FAILED —', err.message);
   });
 } catch (err) {
-  console.log('  OAuth init error:    ❌', err.message);
+  console.log('  OAuth init error: ❌', err.message);
 }
-
 
 const OPENERS = [
   "Hey, quick question. What happens when a customer calls and you're up a tree and can't answer?",
@@ -70,6 +68,23 @@ const OPENERS = [
   "Hi, just wanted to ask. What do you do with customer enquiries that come in after hours when you're done for the day?",
   "Hey quick question. If someone texts you about a job while you're up a tree, how long does it usually take you to get back to them?",
 ];
+
+// ── Closing phrase detection ──────────────────────────────────────────────────
+const CLOSING_PHRASES = new Set([
+  'bye', 'goodbye', 'bye bye', 'ta ta',
+  'cya', 'see ya', 'see you', 'see you later', 'catch you later', 'catch ya later',
+  'in a bit',
+  'take care', 'take it easy', 'all the best', 'cheers then',
+  'cheers', 'thanks', 'ta', 'thank you',
+  'not interested', 'not for me', 'no thanks', 'no thank you', 'nah thanks',
+  'leave me alone', 'go away', 'stop texting', 'stop messaging me',
+  'speak soon', 'laters', 'later',
+]);
+
+function isClosingMessage(text) {
+  const norm = text.toLowerCase().replace(/[!?.,'']/g, '').trim();
+  return CLOSING_PHRASES.has(norm);
+}
 
 // ── Google Calendar: book a Jake demo/onboard call ───────────────────────────
 async function bookJakeCalendarEvent(booking, prospectPhone) {
@@ -94,7 +109,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
     ].join('\n');
 
     const startDt = parseJakeDatetime(booking.date, booking.time);
-    const endDt   = new Date(startDt.getTime() + 30 * 60 * 1000); // 30-min slot
+    const endDt = new Date(startDt.getTime() + 30 * 60 * 1000); // 30-min slot
 
     const event = {
       summary: title,
@@ -165,6 +180,12 @@ app.post('/incoming', (req, res) => {
   const body = req.body.Body?.trim() || '';
   if (!body) return res.sendStatus(200);
 
+  // If this conversation has been closed, ignore all further messages
+  if (isClosed(from)) {
+    console.log(`[Jake] Ignoring message from closed conversation: ${from}`);
+    return res.sendStatus(200);
+  }
+
   // Respond to Twilio immediately — prevents webhook timeout on slow AI responses
   res.type('text/xml');
   res.send('<Response></Response>');
@@ -174,12 +195,22 @@ app.post('/incoming', (req, res) => {
   msgQueues[from] = msgQueues[from].then(async () => {
     console.log(`[Jake] Reply from ${from}: ${body}`);
 
-    // TODO (production): uncomment the line below to add a human-like delay before replying
-    // await new Promise(r => setTimeout(r, 25000 + Math.random() * 5000));
-
     // Opt-out handling (Twilio handles STOP compliance automatically)
     if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(body.toLowerCase())) {
       console.log(`[Jake] Opt-out from ${from}`);
+      return;
+    }
+
+    // Closing message detection — send polite sign-off and close conversation
+    if (isClosingMessage(body)) {
+      console.log(`[Jake] Closing message from ${from}: "${body}" — sending sign-off`);
+      addMessage(from, 'user', body);
+      markClosed(from);
+      const signOff = 'No worries, take care! 👍';
+      addMessage(from, 'assistant', signOff);
+      await typingDelay();
+      await twilioClient.messages.create({ body: signOff, from: JAKE_FROM, to: from });
+      console.log(`✅ [Jake] Sign-off sent to ${from}`);
       return;
     }
 
@@ -187,10 +218,10 @@ app.post('/incoming', (req, res) => {
     updateLastMessageAt(from);
 
     try {
-      const history   = getConversation(from);
-      const rawReply  = await getJakeReply(history);
-      const booking   = parseJakeBooking(rawReply);
-      const reply     = cleanJakeReply(rawReply);
+      const history    = getConversation(from);
+      const rawReply   = await getJakeReply(history);
+      const booking    = parseJakeBooking(rawReply);
+      const reply      = cleanJakeReply(rawReply);
 
       addMessage(from, 'assistant', reply);
 
@@ -208,7 +239,7 @@ app.post('/incoming', (req, res) => {
       await twilioClient.messages.create({
         body: reply,
         from: JAKE_FROM,
-        to: from,
+        to:   from,
       });
 
       console.log(`✅ [Jake] Replied to ${from}: ${reply}`);
@@ -216,7 +247,7 @@ app.post('/incoming', (req, res) => {
       console.error('❌ [Jake] Error:', err.message);
     }
   }).catch(err => console.error('[Jake] Queue error for', from, ':', err));
-})
+});
 
 // ── Simple read-only admin API ────────────────────────────────────────────────
 app.get('/api/conversations', (req, res) => {
@@ -239,11 +270,11 @@ app.get('/test-calendar', async (req, res) => {
 
   // Check env vars
   results.envVars = {
-    GOOGLE_CLIENT_ID:     !!process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID:          !!process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET:      !!process.env.GOOGLE_CLIENT_SECRET,
     JAKE_GOOGLE_REFRESH_TOKEN: !!process.env.JAKE_GOOGLE_REFRESH_TOKEN,
     JAKE_GOOGLE_CALENDAR_ID:   !!process.env.JAKE_GOOGLE_CALENDAR_ID,
-    GOOGLE_REDIRECT_URI:  !!process.env.GOOGLE_REDIRECT_URI,
+    GOOGLE_REDIRECT_URI:       !!process.env.GOOGLE_REDIRECT_URI,
   };
 
   // Try fetching an access token
@@ -277,14 +308,14 @@ app.get('/test-calendar', async (req, res) => {
     });
 
     results.eventCreated = true;
-    results.eventId = event.data.id;
-    results.eventLink = event.data.htmlLink;
-    results.status = 'SUCCESS';
+    results.eventId      = event.data.id;
+    results.eventLink    = event.data.htmlLink;
+    results.status       = 'SUCCESS';
   } catch (err) {
-    results.error = err.message;
-    results.errorCode = err.code;
+    results.error        = err.message;
+    results.errorCode    = err.code;
     results.errorDetails = err.errors || null;
-    results.status = 'FAILED';
+    results.status       = 'FAILED';
   }
 
   res.json(results);
@@ -389,17 +420,17 @@ app.post('/trigger-campaign', async (req, res) => {
     return res.status(500).json({ error: 'JAKE_PHONE_NUMBER not configured' });
   }
 
-  const raw = fs.readFileSync(csvPath, 'utf-8');
-  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const raw     = fs.readFileSync(csvPath, 'utf-8');
+  const lines   = raw.split('\n').map(l => l.trim()).filter(Boolean);
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
   const contacts = lines.slice(1).map(line => {
     const vals = line.split(',').map(v => v.trim());
-    const obj = {};
+    const obj  = {};
     headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
     return obj;
   });
 
-  const dryRun = req.body.dryRun === true || req.query.dryRun === 'true';
+  const dryRun       = req.body.dryRun === true || req.query.dryRun === 'true';
   const RATE_LIMIT_MS = 2000;
   let sent = 0, skipped = 0, failed = 0;
 
@@ -436,8 +467,8 @@ app.post('/trigger-campaign', async (req, res) => {
 });
 
 // ── Hourly follow-up job ─────────────────────────────────────────────────────
-const COLD_FOLLOW_UP_MSG = "Hey, did you get my message the other day? Just wanted to make sure it didn't get lost 👍";
-const FOLLOW_UP_MSG = "Hey, just checking back in — still happy to jump on a quick call and show you how it works if you're interested. No pressure either way 👍";
+const COLD_FOLLOW_UP_MSG  = "Hey, did you get my message the other day? Just wanted to make sure it didn't get lost 👍";
+const FOLLOW_UP_MSG       = "Hey, just checking back in — still happy to jump on a quick call and show you how it works if you're interested. No pressure either way 👍";
 
 setInterval(async () => {
   try {
@@ -449,7 +480,7 @@ setInterval(async () => {
         await twilioClient.messages.create({
           body: hasReplied ? FOLLOW_UP_MSG : COLD_FOLLOW_UP_MSG,
           from: process.env.JAKE_PHONE_NUMBER,
-          to: p.phone,
+          to:   p.phone,
         });
         addMessage(p.phone, 'assistant', hasReplied ? FOLLOW_UP_MSG : COLD_FOLLOW_UP_MSG);
         markFollowUpSent(p.phone);
@@ -463,44 +494,23 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000); // every hour
 
-
 // ── Google re-auth ───────────────────────────────────────────────────────────
 
 app.get('/reauth-google', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar']
+    prompt:      'consent',
+    scope:       ['https://www.googleapis.com/auth/calendar']
   });
   res.redirect(authUrl);
 });
 
 app.get('/save-token', async (req, res) => {
-  const { code } = req.query;
-  const { tokens } = await oauth2Client.getToken(code);
+  const { code }    = req.query;
+  const { tokens }  = await oauth2Client.getToken(code);
   res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> — copy this into your JAKE_GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
 
-    // — Test calendar connection
-app.get('/test-calendar', async (req, res) => {
-    try {
-          oauth2Client.setCredentials({ refresh_token: process.env.JAKE_GOOGLE_REFRESH_TOKEN });
-          const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-          const now = new Date();
-          const end = new Date(now.getTime() + 30 * 60 * 1000);
-          await calendar.events.insert({
-                  calendarId: process.env.JAKE_GOOGLE_CALENDAR_ID,
-                  requestBody: {
-                            summary: 'Test Event - Calendar Connection Check',
-                            start: { dateTime: now.toISOString() },
-                            end: { dateTime: end.toISOString() },
-                  },
-          });
-          res.json({ status: 'SUCCESS', event: 'created' });
-    } catch (err) {
-          res.json({ status: 'FAILED', error: err.message });
-    }
-});
 // ── One-time 11:00 London campaign Monday (Yellow_Batch_2) ────────────────────
 // ── Scheduled batch campaigns (node-cron) ────────────────────────────────────────
 const cron = require('node-cron');
