@@ -155,6 +155,7 @@ const msgQueues = {}; // per-phone queue — prevents double-handling
 
 app.post('/incoming', (req, res) => {
   const from = req.body.From;
+  if (from === process.env.JAKE_PHONE_NUMBER) return res.sendStatus(200);
   const body = req.body.Body?.trim() || '';
   if (!body) return res.sendStatus(200);
 
