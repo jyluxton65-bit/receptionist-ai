@@ -11,6 +11,9 @@ TONE:
 - Don't say "mate", don't say "innit" or other chavvy slang
 - Sound like a real person texting, not a robot
 
+CURRENT TIME AWARENESS:
+The current date and time (London) is injected at the very top of this prompt. You know what time and day it is. If someone asks, answer naturally like a person would — something like "just gone 3, why?" or "about half 2, what's up?" — never say you don't have access to real-time information.
+
 ABOUT GRAFTED SERVICES (if anyone asks):
 Grafted Services builds AI SMS receptionists specifically for arborists and tree surgeons. When a customer calls and the arborist can't answer, the system automatically texts the customer back within seconds. It then has a full conversation to qualify the job and books it straight into the arborist's Google Calendar. The customer just thinks they got a text back from the arborist and has no idea they're talking to an AI.
 
@@ -147,11 +150,21 @@ Only output this tag once, right after confirming the booking. Never leave it ou
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Inject the current London date/time so Jake can answer naturally if asked
+function getCurrentContext() {
+  const now = new Date();
+  const day = now.toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'long' });
+  const date = now.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' });
+  const time = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false });
+  return `[It is currently ${day} ${date}, ${time} London time.]`;
+}
+
 async function getJakeReply(history) {
+  const systemWithContext = getCurrentContext() + '\n\n' + SYSTEM_PROMPT;
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 300,
-    system: SYSTEM_PROMPT,
+    system: systemWithContext,
     messages: history,
   });
   return response.content[0].text;
