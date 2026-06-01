@@ -98,10 +98,8 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
 
     const calendar = google.calendar({ version: 'v3', auth });
 
-    // Title: "DEMO - Manchester Tree Care - Didsbury"
     const title = `${booking.type} - ${booking.businessName} - ${booking.town}`;
 
-    // Full description with everything Jake collected
     const description = [
       booking.description,
       '',
@@ -109,7 +107,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
     ].join('\n');
 
     const startDt = parseJakeDatetime(booking.date, booking.time);
-    const endDt = new Date(startDt.getTime() + 30 * 60 * 1000); // 30-min slot
+    const endDt = new Date(startDt.getTime() + 30 * 60 * 1000);
 
     const event = {
       summary: title,
@@ -136,7 +134,7 @@ async function bookJakeCalendarEvent(booking, prospectPhone) {
   }
 }
 
-// Simple date/time parser (mirrors calendar.js)
+// Simple date/time parser
 function parseJakeDatetime(dateStr, timeStr) {
   const now  = new Date();
   const date = new Date();
@@ -166,7 +164,7 @@ function parseJakeDatetime(dateStr, timeStr) {
 }
 
 // ── Inbound reply from a prospect ────────────────────────────────────────────
-const msgQueues = {}; // per-phone queue — prevents double-handling
+const msgQueues = {};
 
 // ── Typing delay (simulates human response time) ──────────────────────────────
 function typingDelay() {
@@ -190,12 +188,11 @@ app.post('/incoming', (req, res) => {
   res.type('text/xml');
   res.send('<Response></Response>');
 
-  // Queue per phone number to prevent double-handling if messages arrive close together
   if (!msgQueues[from]) msgQueues[from] = Promise.resolve();
   msgQueues[from] = msgQueues[from].then(async () => {
     console.log(`[Jake] Reply from ${from}: ${body}`);
 
-    // Opt-out handling (Twilio handles STOP compliance automatically)
+    // Opt-out handling
     if (['stop', 'unsubscribe', 'quit', 'cancel'].includes(body.toLowerCase())) {
       console.log(`[Jake] Opt-out from ${from}`);
       return;
@@ -214,6 +211,16 @@ app.post('/incoming', (req, res) => {
       return;
     }
 
+    // Auto-reply loop detection: if the same message content arrives twice in a row
+    // from the same number, it's almost certainly an auto-responder — close and stop
+    const priorHistory = getConversation(from);
+    const lastUserMsg = [...priorHistory].reverse().find(m => m.role === 'user');
+    if (lastUserMsg && lastUserMsg.content === body) {
+      console.log(`[Jake] Auto-reply loop detected from ${from} — closing conversation`);
+      markClosed(from);
+      return;
+    }
+
     addMessage(from, 'user', body);
     updateLastMessageAt(from);
 
@@ -225,13 +232,11 @@ app.post('/incoming', (req, res) => {
 
       addMessage(from, 'assistant', reply);
 
-      // If a booking tag was detected, create the Calendar event and flag the prospect
       if (booking) {
         console.log(`📅 [Jake] Booking detected: ${booking.type} - ${booking.businessName} @ ${booking.date} ${booking.time}`);
         await bookJakeCalendarEvent(booking, from);
         markBooked(from);
       } else if (/booked in|jay will (call|be in touch)/i.test(reply)) {
-        // Fallback: flag as booked even without a tag
         markBooked(from);
       }
 
@@ -263,12 +268,10 @@ app.get('/api/prospects', (req, res) => {
   res.json(getProspects(status || null));
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
 // ── Calendar diagnostics ─────────────────────────────────────────────────────
 app.get('/test-calendar', async (req, res) => {
   const results = {};
 
-  // Check env vars
   results.envVars = {
     GOOGLE_CLIENT_ID:          !!process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET:      !!process.env.GOOGLE_CLIENT_SECRET,
@@ -277,7 +280,6 @@ app.get('/test-calendar', async (req, res) => {
     GOOGLE_REDIRECT_URI:       !!process.env.GOOGLE_REDIRECT_URI,
   };
 
-  // Try fetching an access token
   try {
     const auth = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -289,7 +291,6 @@ app.get('/test-calendar', async (req, res) => {
     const tokenResult = await auth.getAccessToken();
     results.accessToken = tokenResult.token ? 'ok (starts: ' + tokenResult.token.substring(0, 20) + '...)' : 'null';
 
-    // Try creating a test event
     const calendar = google.calendar({ version: 'v3', auth });
     const now = new Date();
     const end = new Date(now.getTime() + 30 * 60 * 1000);
@@ -323,10 +324,6 @@ app.get('/test-calendar', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// ── Testing helpers (browser-friendly GET endpoints) ─────────────────────────
-
-// Reset a conversation — just visit this URL in your browser:
-// https://receptionist-ai-production-1c42.up.railway.app/jake/reset/+447700900001
 app.get('/reset/:phone', (req, res) => {
   const phone = decodeURIComponent(req.params.phone);
   resetConversation(phone);
@@ -334,8 +331,6 @@ app.get('/reset/:phone', (req, res) => {
   res.send(`<h2>✅ Reset done</h2><p>Conversation cleared for <b>${phone}</b>. Jake will treat this number as brand new.</p>`);
 });
 
-// Have Jake text you first — just visit this URL in your browser:
-// https://receptionist-ai-production-1c42.up.railway.app/jake/text-me/+447700900001
 app.get('/text-me/:phone', async (req, res) => {
   const phone = decodeURIComponent(req.params.phone);
   if (!JAKE_FROM) return res.status(500).send('<h2>❌ JAKE_PHONE_NUMBER not configured</h2>');
@@ -366,7 +361,6 @@ app.post('/send-campaign', async (req, res) => {
   const RATE_LIMIT_MS = 2000;
   let sent = 0, skipped = 0, failed = 0;
 
-  // Respond immediately, process async
   res.json({ status: 'started', total: contacts.length, dryRun: !!dryRun });
 
   for (const contact of contacts) {
@@ -399,7 +393,6 @@ app.post('/send-campaign', async (req, res) => {
   console.log(`[Jake] Campaign done. Sent: ${sent} Skipped: ${skipped} Failed: ${failed}`);
 });
 
-// ── Campaign trigger (GET) — calls runCampaign from send-campaign.js ─────────
 app.get('/trigger-campaign', async (req, res) => {
   try {
     await runCampaign('jake/contacts.csv');
@@ -408,7 +401,7 @@ app.get('/trigger-campaign', async (req, res) => {
     res.send('Error: ' + err.message);
   }
 });
-// ── Campaign trigger — reads jake/contacts.csv from disk ─────────────────────
+
 app.post('/trigger-campaign', async (req, res) => {
   const fs = require('fs');
   const csvPath = path.join(__dirname, 'contacts.csv');
@@ -430,7 +423,7 @@ app.post('/trigger-campaign', async (req, res) => {
     return obj;
   });
 
-  const dryRun       = req.body.dryRun === true || req.query.dryRun === 'true';
+  const dryRun        = req.body.dryRun === true || req.query.dryRun === 'true';
   const RATE_LIMIT_MS = 2000;
   let sent = 0, skipped = 0, failed = 0;
 
@@ -492,10 +485,9 @@ setInterval(async () => {
   } catch (err) {
     console.error('❌ [Jake] Follow-up job error:', err.message);
   }
-}, 60 * 60 * 1000); // every hour
+}, 60 * 60 * 1000);
 
 // ── Google re-auth ───────────────────────────────────────────────────────────
-
 app.get('/reauth-google', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -511,8 +503,7 @@ app.get('/save-token', async (req, res) => {
   res.send(`Your new refresh token is: <b>${tokens.refresh_token}</b> — copy this into your JAKE_GOOGLE_REFRESH_TOKEN env var on Railway`);
 });
 
-// ── One-time 11:00 London campaign Monday (Yellow_Batch_2) ────────────────────
-// ── Scheduled batch campaigns (node-cron) ────────────────────────────────────────
+// ── Scheduled batch campaigns (node-cron) ─────────────────────────────────────
 const cron = require('node-cron');
 const fs   = require('fs');
 
