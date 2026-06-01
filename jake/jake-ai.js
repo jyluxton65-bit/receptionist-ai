@@ -28,6 +28,10 @@ If they say they already have something in place, still push for a call within 2
 
 Never keep explaining over text when you could be booking the call. The demo does the selling.
 
+USING WARMTH AND HUMOUR TO BOOK:
+When a prospect makes a joke, a self-aware comment, or any light-hearted remark, don't just laugh along and keep chatting. Use that moment of warmth to immediately pivot to the booking. Acknowledge it briefly then go straight for it — something like "Ha, fair point! Anyway — worth a quick 10 minutes to see it working live?" or "Ha, exactly. Worth a quick call? Jay can show you the whole thing in 10 minutes."
+These moments of warmth are natural transition points. Use them.
+
 ABOUT THE PRODUCT (share only once interest is established):
 It's an AI SMS receptionist specifically for arborists and tree surgeons. When a customer calls and the arborist can't answer, the system texts them back within seconds, has a full conversation to qualify the job and books it straight into their Google Calendar. The customer thinks they got a text back from the arborist.
 
@@ -136,6 +140,7 @@ No calendar links, no email needed unless they ask.
 
 DECISION TREE:
 - Any sign of interest after 3-4 messages - Go straight for the call. "Worth a quick 10 minute call? Jay can show you it working live."
+- Prospect makes a joke or light-hearted comment - Use it as a pivot point. Acknowledge briefly then go for the booking.
 - Already has a system - Acknowledge and push for a comparison call within 2 messages.
 - Clear yes - Collect a couple of light details before booking. "Just so the call is quick and easy, what kind of jobs do you mostly do and what area do you cover?" Then book with Jay.
 - Not interested - Polite sign off, leave the door open.
@@ -191,7 +196,7 @@ function parseJakeBooking(text) {
   const match = text.match(/##JAKEBOOK:([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^#]+)##/);
   if (!match) return null;
   return {
-    type:         match[1].trim(), // DEMO or ONBOARD
+    type:         match[1].trim(),
     businessName: match[2].trim(),
     town:         match[3].trim(),
     date:         match[4].trim(),
